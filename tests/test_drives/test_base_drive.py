@@ -9,7 +9,7 @@ def almost_equal(a, b, tol=1e-5):
 @pytest.mark.parametrize("optimal,current,m,n,expected", [
     ([1.0, 2.0], [0.0, 0.0], 1, 1, torch.tensor(3.0)),                            # L1 norm
     ([1.0, 2.0], [0.0, 0.0], 2, 2, torch.sqrt(torch.tensor(5.0))),               # L2 norm
-    ([1.0, 2.0], [0.0, 0.0], 3, 4, (1**4 + 2**4) ** (1/3)),                       # generalized
+    ([1.0, 2.0], [0.0, 0.0], 3, 4, torch.tensor((1**4 + 2**4) ** (1/3))),         # generalized
 ])
 def test_compute_drive(optimal, current, m, n, expected):
     drive = BaseDrive(optimal_internal_states=optimal, m=m, n=n)
