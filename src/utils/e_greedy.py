@@ -1,7 +1,11 @@
 import numpy as np
-from greedy_policy import greedy_policy
 import random
 import gymnasium as gym
+
+def greedy_policy(Qtable, state):
+	# Exploitation: take the action with the highest state, action value
+	action = np.argmax(Qtable[state][:])
+	return action
 
 def epsilon_greedy_policy(Qtable, state, epsilon, env):
 	# Randomly generate a number between 0 and 1
