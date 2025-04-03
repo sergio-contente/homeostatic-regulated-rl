@@ -28,11 +28,3 @@ def test_compute_reward(optimal, current, outcome, m, n):
     expected = d_t - d_tp1
     result = drive.compute_reward(current, outcome)
     assert almost_equal(result, expected), f"Expected {expected}, got {result}"
-
-
-def main():
-    test_compute_drive()
-    test_compute_reward()
-
-if __name__ == "__main__":
-    main()
