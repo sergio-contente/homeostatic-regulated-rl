@@ -1,5 +1,3 @@
-# src/drives/elliptic_drive.py
-
 import torch
 from .base_drive import BaseDrive
 
