@@ -1,0 +1,17 @@
+global_params:
+  optimal_internal_state: [0, 0] # Set point
+drive_params:
+
+  # Base drive configs
+  base_drive:
+    n: 2
+    m: 2
+
+  # Elliptic drive configs
+  elliptic_drive:
+    n_vector: [2, 3]
+
+  # Interoceptive drive configs
+  interoceptive_drive:
+    eta: 0.5
+  
