@@ -57,15 +57,15 @@ class GridWorldEnv(gym.Env):
         self.window = None
         self.clock = None
 
-    def _get_obs(self):
+    def _get_obs(self): # Private method
         return {"agent": self._agent_location, "target": self._target_location}
 
-    def _get_info(self):
+    def _get_info(self): # Private method
         return {
             "distance": np.linalg.norm(
                 self._agent_location - self._target_location, ord=1
             )
-        }
+        } # Manhattan Distance between the agent and the target
 
     def reset(self, seed=None, options=None):
         # We need the following line to seed self.np_random
