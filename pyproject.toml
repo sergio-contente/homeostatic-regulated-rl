@@ -16,6 +16,5 @@ dependencies = [
   "pygame>=2.1.3",
   "pre-commit",
   "torch",
-  "random",
   "numpy"
 ]

@@ -2,13 +2,11 @@ import gymnasium as gym
 import numpy as np
 import torch
 from gymnasium import spaces
-from ...utils.convertion import ToTensor
-
 
 class InternalStateWrapper(gym.Wrapper):
     """
-    Wrapper que adiciona estados internos à observação e calcula efeitos de recursos
-    posicionados aleatoriamente no ambiente.
+    Wrapper that adds internal states to the observation and calculates effects of 
+    resources randomly positioned in the environment.
     """
 
     def __init__(self, env, internal_state_size=2, n_resources=2, initial_state_range=(0.2, 0.5)):
@@ -27,6 +25,7 @@ class InternalStateWrapper(gym.Wrapper):
         self._internal_states = None
         self._previous_internal_states = None
 
+        
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
         self._internal_states = self._init_internal_states()
@@ -36,7 +35,7 @@ class InternalStateWrapper(gym.Wrapper):
 
         outcome = torch.zeros_like(self._internal_states)
         obs = self._augment_observation(obs, outcome)
-        info = self._augment_info(info, outcome)
+        info = self._augment_info(info)
 
         return obs, info
 
@@ -47,14 +46,22 @@ class InternalStateWrapper(gym.Wrapper):
         self._previous_internal_states = self._internal_states.clone()
 
         obs = self._augment_observation(obs, total_outcome)
-        info = self._augment_info(info, total_outcome)
+        info = self._augment_info(info)
 
         return obs, reward, terminated, truncated, info
 
-    # ----------- MÉTODOS AUXILIARES -----------
+    # ----------- HELPER METHODS -----------
+
+    def _to_tensor(self, x):
+        """
+        Utility method to ensure input is a detached torch.Tensor.
+        """
+        if isinstance(x, torch.Tensor):
+            return x.clone().detach()
+        return torch.tensor(x, dtype=torch.float32)
 
     def _init_internal_states(self):
-        return ToTensor(np.random.uniform(
+        return self._to_tensor(np.random.uniform(
             self.initial_state_range[0],
             self.initial_state_range[1],
             size=self.internal_state_size
@@ -62,8 +69,8 @@ class InternalStateWrapper(gym.Wrapper):
 
     def _setup_resources(self):
         """
-        Posiciona recursos aleatórios no grid, cada um com um vetor de efeito
-        sobre os estados internos.
+        Places random resources in the grid, each with an effect vector
+        on internal states.
         """
         self.resource_locations.clear()
         occupied = {tuple(self.env._agent_location), tuple(self.env._target_location)}
@@ -74,22 +81,22 @@ class InternalStateWrapper(gym.Wrapper):
                 continue
             occupied.add(loc)
 
-            # Cria vetor de efeito aleatório sobre os internal states
+            # Create random effect vector on internal states
             effect = np.zeros(self.internal_state_size)
             affected_idx = self.env.np_random.choice(
                 self.internal_state_size, size=1, replace=False)
             effect[affected_idx] = self.env.np_random.uniform(0.2, 0.4)
 
             self.resource_locations[loc] = {
-                'effect': ToTensor(effect)
+                'effect': self._to_tensor(effect)
             }
 
     def _apply_outcome(self, agent_loc):
         """
-        Aplica efeitos de recursos e decaimento homeostático nos estados internos.
+        Applies resource effects and homeostatic decay on internal states.
         """
         effect = self.resource_locations.get(agent_loc, {}).get('effect', torch.zeros_like(self._internal_states))
-        decay = ToTensor(np.ones(self.internal_state_size) * 0.01)
+        decay = self._to_tensor(np.ones(self.internal_state_size) * 0.01)
         total_outcome = effect - decay
 
         self._internal_states = torch.clamp(self._internal_states + total_outcome, 0.0, 1.0)
@@ -102,11 +109,9 @@ class InternalStateWrapper(gym.Wrapper):
             "outcome": outcome.numpy()
         }
 
-    def _augment_info(self, info, outcome):
+    def _augment_info(self, info):
         return {
             **info,
-            "internal_states": self._internal_states.numpy(),
             "previous_internal_states": self._previous_internal_states.numpy(),
-            "outcome": outcome.numpy(),
             "resource_locations": self.resource_locations
         }

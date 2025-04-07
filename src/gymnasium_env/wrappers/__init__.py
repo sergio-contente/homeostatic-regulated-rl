@@ -1,2 +1,3 @@
-from gymnasium_env.wrappers.base_drive_reward import BaseDriveRewardWrapper
-from gymnasium_env.wrappers.internal_state import InternalStateWrapper
+from src.gymnasium_env.wrappers.drive_reward import DriveRewardWrapper
+from src.gymnasium_env.wrappers.internal_state import InternalStateWrapper
+from src.gymnasium_env.wrappers.visualization import VisualizationWrapper
