@@ -5,6 +5,7 @@ from src.gymnasium_env.envs import GridWorldEnv2Resources
 def test_render_environment():
     """
     Tests if the GridWorldEnv2Resources environment can be properly initialized and rendered.
+    Adjusted for the updated BaseDrive class that now maintains internal state.
     """
     try:
         print("Starting rendering test...")
@@ -12,7 +13,7 @@ def test_render_environment():
         # Initialize the environment with visualization
         env = GridWorldEnv2Resources(
             config_path="config/config.yaml",
-            drive_type="base_drive",
+            drive_type="base",
             render_mode="human"
         )
         

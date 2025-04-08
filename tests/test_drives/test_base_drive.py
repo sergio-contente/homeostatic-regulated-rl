@@ -1,8 +1,7 @@
-# tests/test_drives/test_base_drive.py
 import torch
 import pytest
 
-from drives.base_drive import BaseDrive
+from src.drives.base_drive import BaseDrive
 
 def almost_equal(a, b, tol=1e-5):
     return torch.isclose(a, b, atol=tol)
@@ -17,15 +16,35 @@ def test_compute_drive(optimal, current, m, n, expected):
     result = drive.compute_drive(current)
     assert almost_equal(result, expected), f"Expected {expected}, got {result}"
 
-@pytest.mark.parametrize("optimal,current,outcome,m,n", [
+@pytest.mark.parametrize("optimal,current,new_states,m,n", [
     ([1.0, 1.0], [0.0, 0.0], [0.5, 0.5], 1, 1),
     ([1.0, 1.0], [0.0, 0.0], [0.5, 1.5], 2, 2),
     ([1.0, 1.0], [0.0, 0.0], [1.5, 0.5], 3, 4),
 ])
-def test_compute_reward(optimal, current, outcome, m, n):
+def test_compute_reward(optimal, current, new_states, m, n):
     drive = BaseDrive(optimal_internal_states_config=optimal, m=m, n=n)
+    
+    # Calculate initial drive
     d_t = drive.compute_drive(current)
-    d_tp1 = drive.compute_drive(torch.tensor(current) + torch.tensor(outcome))
+    drive.update_drive(d_t)
+    
+    # Calculate new drive
+    d_tp1 = drive.compute_drive(new_states)
+    
+    # Expected reward is the reduction in drive
     expected = d_t - d_tp1
-    result = drive.compute_reward(current, outcome)
+    
+    # Get actual reward
+    result = drive.compute_reward(d_tp1)
+    
     assert almost_equal(result, expected), f"Expected {expected}, got {result}"
+
+@pytest.mark.parametrize("optimal,current,expected_result", [
+    ([0.5, 0.5], [0.5, 0.5], True),                  # Exact match
+    ([0.5, 0.5], [0.5, 0.501], True),                # Very close (within tolerance)
+    ([0.5, 0.5], [0.5, 0.6], False),                 # Too far
+])
+def test_has_reached_optimal(optimal, current, expected_result):
+    drive = BaseDrive(optimal_internal_states_config=optimal, m=1, n=1)
+    result = drive.has_reached_optimal(current)
+    assert result == expected_result, f"Expected {expected_result}, got {result}"

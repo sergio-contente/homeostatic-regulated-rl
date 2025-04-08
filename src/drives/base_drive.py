@@ -79,7 +79,7 @@ class BaseDrive():
         :param new_drive:  New drive (H_{t+1}).
         :return: Scalar torch.Tensor representing reward.
         """
-        
+
         reward = self._current_drive - new_drive
         return reward
     
@@ -87,14 +87,18 @@ class BaseDrive():
         """
         Checks if the current internal states have reached the optimal values.
         
+        This is determined by checking if the drive value is below a small threshold,
+        indicating that the internal states are very close to their optimal values.
+        
         :param current_internal_states: Current internal states (H_t).
         :return: Boolean indicating whether optimal states are reached.
         """
         drive_value = self.compute_drive(current_internal_states)
+        threshold = 1e-3
         
-        # Handle both tensor and float return types
+        # Convert tensor to scalar if needed
         if isinstance(drive_value, torch.Tensor):
-            return torch.isclose(drive_value, torch.tensor(0.0), atol=1e-5)
-        else:
-            # If compute_drive returned a float (which can happen if the tensor was converted)
-            return abs(drive_value) < 1e-5
+            drive_value = drive_value.item()
+            
+        # Check if drive is close enough to zero
+        return drive_value < threshold

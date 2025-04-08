@@ -2,7 +2,7 @@
 import torch
 import pytest
 
-from utils.get_params import ParameterHandler
+from src.utils.get_params import ParameterHandler
 
 
 @pytest.mark.parametrize("drive_type", [
@@ -11,7 +11,7 @@ from utils.get_params import ParameterHandler
     'elliptic_drive'
 ])
 def test_get_drive(drive_type):
-    config_path = "config/config.yaml"
+    config_path = "config/test_config.yaml"
     param_handler = ParameterHandler(config_path)
     drive = param_handler.create_drive(drive_type)
     
