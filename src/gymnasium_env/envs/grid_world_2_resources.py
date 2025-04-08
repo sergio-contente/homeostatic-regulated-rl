@@ -25,8 +25,7 @@ class GridWorldEnv2Resources(gym.Env):
         # Observations are dictionaries with the agent's internal states only
         self.observation_space = spaces.Dict(
             {
-                "internal_states": spaces.Box(0, 1, shape=(self._internal_state_size,), dtype=np.float32),
-                "resources_available": spaces.MultiBinary(self._internal_state_size)
+                "internal_states": spaces.Box(0, 1, shape=(self._internal_state_size,), dtype=np.float32)
             }
         )
 
@@ -70,13 +69,13 @@ class GridWorldEnv2Resources(gym.Env):
 
     def _get_obs(self):
         return {
-            "internal_states": self._internal_states,
-            "resources_available": self._resources_available
+            "internal_states": self._internal_states
         }
 
     def _get_info(self):
         return {
-            "drive": self.drive.compute_drive(self._internal_states)
+            "drive": self.drive.compute_drive(self._internal_states),
+             "resources_available": self._resources_available
             }
 
     def reset(self, seed=None, options=None):
