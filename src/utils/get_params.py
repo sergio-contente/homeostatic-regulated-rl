@@ -1,10 +1,10 @@
 import yaml
-from ..drives.base_drive import BaseDrive
-from ..drives.interoceptive_drive import InteroceptiveModulationDrive
-from ..drives.elliptic_drive import EllipticDrive
+from drives.base_drive import BaseDrive
+from drives.interoceptive_drive import InteroceptiveModulationDrive
+from drives.elliptic_drive import EllipticDrive
 
 class ParameterManager():
-	def __init__(self, parameter_path, drive_type):
+	def __init__(self, parameter_path):
 		with open(parameter_path, 'r') as file:
 			self.config = yaml.safe_load(file)
 
