@@ -10,8 +10,7 @@ class GridWorldEnv2Resources(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
     def __init__(self, config_path, drive_type, render_mode=None, size=5):
-        # Board setup
-        self.size = size  # The size of the square grid
+        # Window setup
         self.window_size = 512  # The size of the PyGame window
 
         # Drive setup
@@ -20,30 +19,30 @@ class GridWorldEnv2Resources(gym.Env):
 
         # Homeostatic Regulated Environment variables
         self._internal_state_size = self.drive.get_internal_state_size()
+        self._outcome = 0.1
+        self._internal_states = np.zeros(self._internal_state_size, dtype=np.float32)
 
-        # Observations are dictionaries with the agent's and the target's location.
-        # Each location is encoded as an element of {0, ..., `size`}^2, i.e. MultiDiscrete([size, size]).
+        # Observations are dictionaries with the agent's internal states only
         self.observation_space = spaces.Dict(
             {
-                "agent": spaces.Box(0, size - 1, shape=(2,), dtype=int),
-                "target": spaces.Box(0, size - 1, shape=(2,), dtype=int),
-                "internal_states": spaces.Box(0, 1, shape=(self.internal_state_size,), dtype=np.float32)
+                "internal_states": spaces.Box(0, 1, shape=(self._internal_state_size,), dtype=np.float32),
+                "resources_available": spaces.MultiBinary(self._internal_state_size)
             }
         )
 
-        self.action_space = spaces.Discrete(4)
-
+        # Define action space for homeostatic regulation
+        self.action_space = spaces.Discrete(3)
         """
-        The following dictionary maps abstract actions from `self.action_space` to 
-        the direction we will walk in if that action is taken.
-        I.e. 0 corresponds to "right", 1 to "up" etc.
+        0: Consume resource 0 (if available)
+        1: Consume resource 1 (if available)
+        2: Do nothing
         """
-        self._action_to_direction = {
-            0: np.array([1, 0]),
-            1: np.array([0, 1]),
-            2: np.array([-1, 0]),
-            3: np.array([0, -1]),
-        }
+        
+        # Resource availability (changes over time)
+        self._resources_available = np.ones(self._internal_state_size, dtype=bool)
+        
+        # Resource regeneration parameters
+        self._resource_regen_prob = 0.1  # Probability of resource regeneration per step
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
@@ -57,40 +56,42 @@ class GridWorldEnv2Resources(gym.Env):
         """
         self.window = None
         self.clock = None
+        
+        # Colors for rendering
+        self.colors = {
+            "background": (240, 240, 240),
+            "text": (0, 0, 0),
+            "resource_available": (0, 200, 0),
+            "resource_unavailable": (200, 0, 0),
+            "internal_state_0": (0, 100, 255),
+            "internal_state_1": (100, 0, 255),
+            "optimal_marker": (255, 215, 0),  # Gold color for optimal level marker
+        }
 
     def _get_obs(self):
         return {
-            "agent": self._agent_location, 
-            "target": self._target_location,
-            "internal_states": self._internal_states
-            }
+            "internal_states": self._internal_states,
+            "resources_available": self._resources_available
+        }
 
     def _get_info(self):
         return {
-            "distance": np.linalg.norm(
-                self._agent_location - self._target_location, ord=1
-            ),
             "drive": self.drive.compute_drive(self._internal_states)
-        }
+            }
 
     def reset(self, seed=None, options=None):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
-        # Choose the agent's location uniformly at random
-        self._agent_location = self.np_random.integers(0, self.size, size=2, dtype=int)
-
-        # We will sample the target's location randomly until it does not coincide with the agent's location
-        self._target_location = self._agent_location
-        while np.array_equal(self._target_location, self._agent_location):
-            self._target_location = self.np_random.integers(
-                0, self.size, size=2, dtype=int
-            )
-
-         # We will sample the agent's internal states randomly until it does not coincide with the agent's optimal internal states
-        self._internal_states = self.drive.optimal_internal_states
-        while np.array_equal(self._internal_states, self.drive.optimal_internal_states):
-            self._internal_states = self.np_random.integers(0, 10, self._internal_state_size, dtype=np.float32)
+        # Initialize internal states with random values between 0 and 1
+        self._internal_states = self.np_random.random(self._internal_state_size).astype(np.float32)
+        
+        # Initial drive
+        initial_drive = self.drive.compute_drive(self._internal_states)
+        self.drive.update_drive(initial_drive)
+        
+        # All resources available at start
+        self._resources_available = np.ones(self._internal_state_size, dtype=bool)
 
         observation = self._get_obs()
         info = self._get_info()
@@ -101,18 +102,43 @@ class GridWorldEnv2Resources(gym.Env):
         return observation, info
 
     def step(self, action):
-        # Map the action (element of {0,1,2,3}) to the direction we walk in
-        direction = self._action_to_direction[action]
-        # We use `np.clip` to make sure we don't leave the grid
-        self._agent_location = np.clip(
-            self._agent_location + direction, 0, self.size - 1
-        )
+        resource_consumed = False
+        
+        # Apply the chosen action to modify internal states
+        if action == 0 and self._resources_available[0]:  # Consume resource 0
+            self._internal_states[0] = min(1.0, self._internal_states[0] + self._outcome)
+            self._resources_available[0] = False  # Resource consumed
+            resource_consumed = True
+        elif action == 1 and self._resources_available[1]:  # Consume resource 1
+            self._internal_states[1] = min(1.0, self._internal_states[1] + self._outcome)
+            self._resources_available[1] = False  # Resource consumed
+            resource_consumed = True
+        # Action 2 is do nothing, so we don't change internal states
+        decay_rate = 0.05  # Adjust as needed
+        self._internal_states = np.maximum(0.0, self._internal_states - decay_rate)
 
-        # An episode is done iff the internal states reaches the optimal internal states
-        # H_i(t) = H*_i(t) for each i
-        terminated = np.array_equal(self._internal_states, self.drive.optimal_internal_states)
+        # Updates drive and reward
+        new_drive = self.drive.compute_drive(self._internal_states)
+        reward = self.drive.compute_reward(new_drive)
+        self.drive.update_drive(new_drive)
+        
+        # Resource regeneration
+        for i in range(self._internal_state_size):
+            if not self._resources_available[i] and self.np_random.random() < self._resource_regen_prob:
+                self._resources_available[i] = True
+        
+        # An episode is done if internal states are close to optimal
+        # You might want to define a threshold for "close enough"
+        terminated = self.drive.has_reached_optimal(self._internal_states)
+        
+        # # Small reward for consuming resources (optional)
+        # if resource_consumed:
+        #     reward += 0.5
+            
+        # Big reward if reached optimal internal state
+        if terminated:
+            reward += 10.0
 
-        reward = 1 if terminated else 0  # Binary sparse rewards
         observation = self._get_obs()
         info = self._get_info()
 
@@ -126,66 +152,82 @@ class GridWorldEnv2Resources(gym.Env):
             return self._render_frame()
 
     def _render_frame(self):
-        if self.window is None and self.render_mode == "human":
-            pygame.init()
-            pygame.display.init()
-            self.window = pygame.display.set_mode((self.window_size, self.window_size))
-        if self.clock is None and self.render_mode == "human":
-            self.clock = pygame.time.Clock()
+        try:
+            if self.window is None and self.render_mode == "human":
+                pygame.init()
+                pygame.display.init()
+                self.window = pygame.display.set_mode((self.window_size, self.window_size))
+                pygame.font.init()
+                self.font = pygame.font.SysFont("Arial", 20)
+            if self.clock is None and self.render_mode == "human":
+                self.clock = pygame.time.Clock()
 
-        canvas = pygame.Surface((self.window_size, self.window_size))
-        canvas.fill((255, 255, 255))
-        pix_square_size = (
-            self.window_size / self.size
-        )  # The size of a single grid square in pixels
+            canvas = pygame.Surface((self.window_size, self.window_size))
+            canvas.fill(self.colors["background"])
 
-        # First we draw the target
-        pygame.draw.rect(
-            canvas,
-            (255, 0, 0),
-            pygame.Rect(
-                pix_square_size * self._target_location,
-                (pix_square_size, pix_square_size),
-            ),
-        )
-        # Now we draw the agent
-        pygame.draw.circle(
-            canvas,
-            (0, 0, 255),
-            (self._agent_location + 0.5) * pix_square_size,
-            pix_square_size / 3,
-        )
+            padding = 40
+            state_height = 40
+            spacing = 80
+            top = 60
+            bar_width = self.window_size - 2 * padding
 
-        # Finally, add some gridlines
-        for x in range(self.size + 1):
-            pygame.draw.line(
-                canvas,
-                0,
-                (0, pix_square_size * x),
-                (self.window_size, pix_square_size * x),
-                width=3,
-            )
-            pygame.draw.line(
-                canvas,
-                0,
-                (pix_square_size * x, 0),
-                (pix_square_size * x, self.window_size),
-                width=3,
-            )
+            # Draw internal states as bars
+            for i in range(self._internal_state_size):
+                y = top + i * spacing
 
-        if self.render_mode == "human":
-            # The following line copies our drawings from `canvas` to the visible window
-            self.window.blit(canvas, canvas.get_rect())
-            pygame.event.pump()
-            pygame.display.update()
+                # Background bar
+                pygame.draw.rect(canvas, (200, 200, 200), (padding, y, bar_width, state_height), border_radius=5)
 
-            # We need to ensure that human-rendering occurs at the predefined framerate.
-            # The following line will automatically add a delay to keep the framerate stable.
-            self.clock.tick(self.metadata["render_fps"])
-        else:  # rgb_array
-            return np.transpose(
-                np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
-            )
+                # Filled bar
+                value = self._internal_states[i]
+                filled_width = int(bar_width * value)
+                color = self.colors.get(f"internal_state_{i}", (0, 150, 150))
+                pygame.draw.rect(canvas, color, (padding, y, filled_width, state_height), border_radius=5)
+
+                # Optimal level marker
+                try:
+                    optimal = self.drive._optimal_internal_states
+                    opt_val = optimal[i] if isinstance(optimal, (list, np.ndarray)) else optimal.get(i, None)
+                    if opt_val is not None:
+                        x = padding + int(bar_width * opt_val)
+                        pygame.draw.line(canvas, self.colors["optimal_marker"], (x, y), (x, y + state_height), width=3)
+                except Exception as e:
+                    print(f"Could not draw optimal marker for state {i}: {e}")
+
+                # Label
+                label = self.font.render(f"State {i}: {value:.2f}", True, self.colors["text"])
+                canvas.blit(label, (padding, y - 25))
+
+            # Draw resources
+            resource_top = top + self._internal_state_size * spacing + 40
+            for i in range(self._internal_state_size):
+                x = padding + i * 120
+                y = resource_top
+
+                color = self.colors["resource_available"] if self._resources_available[i] else self.colors["resource_unavailable"]
+                pygame.draw.circle(canvas, color, (x + 40, y), 30)
+
+                label = self.font.render(f"Resource {i}", True, self.colors["text"])
+                canvas.blit(label, (x, y + 40))
+
+            # Draw drive
+            drive_val = self.drive.compute_drive(self._internal_states)
+            drive_label = self.font.render(f"Drive: {drive_val:.3f}", True, self.colors["text"])
+            canvas.blit(drive_label, (self.window_size - padding - drive_label.get_width(), self.window_size - 40))
+
+            if self.render_mode == "human":
+                self.window.blit(canvas, canvas.get_rect())
+                pygame.event.pump()
+                pygame.display.update()
+                self.clock.tick(self.metadata["render_fps"])
+            else:
+                return np.transpose(np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2))
+
+        except Exception as e:
+            import traceback
+            print(f"Render error: {e}")
+            print(traceback.format_exc())
+            return None
 
     def close(self):
         if self.window is not None:

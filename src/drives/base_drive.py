@@ -19,6 +19,7 @@ class BaseDrive():
         self._optimal_internal_states = optimal_internal_states_config
         self.m = m
         self.n = n
+        self._current_drive = None
 
     def _to_tensor(self, x):
         """
@@ -67,20 +68,33 @@ class BaseDrive():
         drive_sum = torch.sum(torch.abs(diff) ** self.n)
         drive_value = drive_sum ** (1 / self.m)
         return drive_value
+    
+    def update_drive(self, drive_value):
+        self._current_drive = drive_value
 
-    def compute_reward(self, current_internal_states, outcome):
+    def compute_reward(self, new_drive):
         """
         Compute the reward as the reduction in drive from applying the outcome.
 
-        :param current_internal_states: Current internal states (H_t).
-        :param outcome: Change in internal state from the action (K_t).
+        :param new_drive:  New drive (H_{t+1}).
         :return: Scalar torch.Tensor representing reward.
         """
-        current_internal_states = self._to_tensor(current_internal_states)
-        outcome = self._to_tensor(outcome)
-
-        initial_drive = self.compute_drive(current_internal_states)
-        new_drive = self.compute_drive(current_internal_states + outcome)
-
-        reward = initial_drive - new_drive
+        
+        reward = self._current_drive - new_drive
         return reward
+    
+    def has_reached_optimal(self, current_internal_states):
+        """
+        Checks if the current internal states have reached the optimal values.
+        
+        :param current_internal_states: Current internal states (H_t).
+        :return: Boolean indicating whether optimal states are reached.
+        """
+        drive_value = self.compute_drive(current_internal_states)
+        
+        # Handle both tensor and float return types
+        if isinstance(drive_value, torch.Tensor):
+            return torch.isclose(drive_value, torch.tensor(0.0), atol=1e-5)
+        else:
+            # If compute_drive returned a float (which can happen if the tensor was converted)
+            return abs(drive_value) < 1e-5
