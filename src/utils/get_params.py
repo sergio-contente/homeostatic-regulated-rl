@@ -15,24 +15,24 @@ class ParameterHandler():
 
 		combined_params = {**base_params, **specific_params}
 
-		optimal_internal_states = self.config['global_params']['optimal_internal_state']
+		optimal_internal_states_config = self.config['global_params']['optimal_internal_state']
 
 		if drive_type == 'interoceptive_drive':
 						return InteroceptiveModulationDrive(
-								optimal_internal_states=optimal_internal_states,
+								optimal_internal_states_config=optimal_internal_states_config,
 								m=combined_params['m'],
 								n=combined_params['n'],
 								eta=combined_params['eta']
 						)
 		elif drive_type == "elliptic_drive":
 						return EllipticDrive(
-							optimal_internal_states=optimal_internal_states,
+							optimal_internal_states_config=optimal_internal_states_config,
 							n_vector=combined_params['n_vector'],
 							m=combined_params['m']
 						)
 		else:
 						return BaseDrive(
-							optimal_internal_states=optimal_internal_states,
+							optimal_internal_states_config=optimal_internal_states_config,
 							m=combined_params['m'],
 							n=combined_params['n']
 						)

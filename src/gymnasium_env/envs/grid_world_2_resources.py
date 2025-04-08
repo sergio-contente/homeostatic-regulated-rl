@@ -3,7 +3,7 @@ from gymnasium import spaces
 import pygame
 import numpy as np
 
-from ...utils.handlers.get_params import ParameterHandler
+from ...utils.get_params import ParameterHandler
 
 
 class GridWorldEnv2Resources(gym.Env):

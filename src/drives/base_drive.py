@@ -1,7 +1,6 @@
 # src/drives/base_drive.py
 
 import torch
-from ..utils.handlers.optimal_internal_states import OptimalInternalStatesHandler
 
 class BaseDrive():
     """
@@ -9,15 +8,15 @@ class BaseDrive():
     Provides default drive computation, but subclasses may override it.
     """
 
-    def __init__(self, optimal_internal_states, m=1, n=1):
+    def __init__(self, optimal_internal_states_config, m=1, n=1):
         """
         Initialize the base drive class.
 
-        :param optimal_internal_states: Target internal state vector (H*), as list or torch.Tensor.
+        :param optimal_internal_states_config: Target internal state vector (H*), as dict.
         :param m: Root parameter used in the drive computation.
         :param n: Exponent parameter used in the drive computation.
         """
-        self.optimal_internal_states_handler = OptimalInternalStatesHandler()
+        self._optimal_internal_states = optimal_internal_states_config
         self.m = m
         self.n = n
 
@@ -28,6 +27,26 @@ class BaseDrive():
         if isinstance(x, torch.Tensor):
             return x.clone().detach()
         return torch.tensor(x, dtype=torch.float32)
+    
+    def get_state_value(self, state_name):
+        return self._optimal_internal_states[state_name]
+    
+    def get_tensor_optimal_states_values(self):
+        if isinstance(self._optimal_internal_states, dict):
+            values = []
+            for state_name, state_value in self._optimal_internal_states.items():
+                values.append(state_value)
+            return torch.tensor(values, dtype=torch.float32)
+        elif isinstance(self._optimal_internal_states, list) or isinstance(self._optimal_internal_states, torch.Tensor):
+            return self._to_tensor(self._optimal_internal_states)
+        else:
+            return self._to_tensor(self._optimal_internal_states)
+
+    def has_state(self, state_name):
+        return state_name in self._optimal_internal_states
+
+    def get_internal_state_size(self):
+        return len(self._optimal_internal_states.keys())
 
     def compute_drive(self, current_internal_states):
         """
@@ -42,7 +61,9 @@ class BaseDrive():
         :return: Scalar torch.Tensor representing drive value.
         """
         current_internal_states = self._to_tensor(current_internal_states)
-        diff = self.optimal_internal_states - current_internal_states
+        optimal_states_tensor = self.get_tensor_optimal_states_values()
+
+        diff = optimal_states_tensor - current_internal_states
         drive_sum = torch.sum(torch.abs(diff) ** self.n)
         drive_value = drive_sum ** (1 / self.m)
         return drive_value
@@ -63,6 +84,3 @@ class BaseDrive():
 
         reward = initial_drive - new_drive
         return reward
-    
-    def get_internal_state_size(self):
-        return len(self.optimal_internal_states)

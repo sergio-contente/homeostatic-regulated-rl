@@ -16,7 +16,7 @@ drive_params:
 
   # Elliptic drive configs
   elliptic_drive:
-    n_vector: [2, 3]
+    n_vector: [2, 3, 4, 5]
 
   # Interoceptive drive configs
   interoceptive_drive:
