@@ -1,6 +1,7 @@
 # src/drives/base_drive.py
 
 import torch
+from ..utils.handlers.optimal_internal_states import OptimalInternalStatesHandler
 
 class BaseDrive():
     """
@@ -16,7 +17,7 @@ class BaseDrive():
         :param m: Root parameter used in the drive computation.
         :param n: Exponent parameter used in the drive computation.
         """
-        self.optimal_internal_states = self._to_tensor(optimal_internal_states)
+        self.optimal_internal_states_handler = OptimalInternalStatesHandler()
         self.m = m
         self.n = n
 
@@ -62,3 +63,6 @@ class BaseDrive():
 
         reward = initial_drive - new_drive
         return reward
+    
+    def get_internal_state_size(self):
+        return len(self.optimal_internal_states)

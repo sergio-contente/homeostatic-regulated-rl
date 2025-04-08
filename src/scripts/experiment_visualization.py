@@ -6,23 +6,17 @@ from src.gymnasium_env.envs import GridWorldEnv
 # from src.gymnasium_env.wrappers.visualization import VisualizationWrapper
 
 def run_experiment(
-    drive_type="base", 
     grid_size=7,
-    n_resources=5,
     n_steps=100,
     seed=42
 ):
-    """
-    Run an experiment with the specified drive type.
-    
+    """    
     Args:
-        drive_type: Type of drive to use (base, interoceptive, elliptic, weighted)
         grid_size: Size of the grid world
         n_resources: Number of resources to place in the environment
         n_steps: Number of steps to run the experiment
         seed: Random seed for reproducibility
     """
-    print(f"Starting experiment with {drive_type} drive...")
     
     # Create the base environment
     env = GridWorldEnv(render_mode="human", size=grid_size)

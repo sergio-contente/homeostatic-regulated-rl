@@ -1,7 +1,7 @@
 import torch
 import pytest
 
-from utils.get_params import ParameterManager
+from utils.get_params import ParameterHandler
 
 
 @pytest.mark.parametrize("drive_type", [
@@ -11,8 +11,8 @@ from utils.get_params import ParameterManager
 ])
 def test_get_drive(drive_type):
     config_path = "config/config.yaml"
-    param_manager = ParameterManager(config_path)
-    drive = param_manager.create_drive(drive_type)
+    param_handler = ParameterHandler(config_path)
+    drive = param_handler.create_drive(drive_type)
     
     assert drive.optimal_internal_states is not None
     assert drive.m is not None
@@ -40,8 +40,8 @@ def test_get_drive(drive_type):
 ])
 def test_get_drive_values(drive_type):
     config_path = "config/test_config.yaml"
-    param_manager = ParameterManager(config_path)
-    drive = param_manager.create_drive(drive_type)
+    param_handler = ParameterHandler(config_path)
+    drive = param_handler.create_drive(drive_type)
     
     assert drive.optimal_internal_states == [1.5, 2.5] or torch.all(torch.eq(drive.optimal_internal_states, torch.tensor([1.5, 2.5])))
     

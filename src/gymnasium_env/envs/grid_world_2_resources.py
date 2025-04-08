@@ -3,13 +3,23 @@ from gymnasium import spaces
 import pygame
 import numpy as np
 
+from ...utils.handlers.get_params import ParameterHandler
 
-class GridWorldEnv(gym.Env):
+
+class GridWorldEnv2Resources(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, render_mode=None, size=5):
+    def __init__(self, config_path, drive_type, render_mode=None, size=5):
+        # Board setup
         self.size = size  # The size of the square grid
         self.window_size = 512  # The size of the PyGame window
+
+        # Drive setup
+        self.parameter_manager = ParameterHandler(config_path)
+        self.drive = self.parameter_manager.create_drive(drive_type)
+
+        # Homeostatic Regulated Environment variables
+        self._internal_state_size = self.drive.get_internal_state_size()
 
         # Observations are dictionaries with the agent's and the target's location.
         # Each location is encoded as an element of {0, ..., `size`}^2, i.e. MultiDiscrete([size, size]).
@@ -17,10 +27,10 @@ class GridWorldEnv(gym.Env):
             {
                 "agent": spaces.Box(0, size - 1, shape=(2,), dtype=int),
                 "target": spaces.Box(0, size - 1, shape=(2,), dtype=int),
+                "internal_states": spaces.Box(0, 1, shape=(self.internal_state_size,), dtype=np.float32)
             }
         )
 
-        # We have 4 actions, corresponding to "right", "up", "left", "down", "right"
         self.action_space = spaces.Discrete(4)
 
         """
@@ -49,13 +59,18 @@ class GridWorldEnv(gym.Env):
         self.clock = None
 
     def _get_obs(self):
-        return {"agent": self._agent_location, "target": self._target_location}
+        return {
+            "agent": self._agent_location, 
+            "target": self._target_location,
+            "internal_states": self._internal_states
+            }
 
     def _get_info(self):
         return {
             "distance": np.linalg.norm(
                 self._agent_location - self._target_location, ord=1
-            )
+            ),
+            "drive": self.drive.compute_drive(self._internal_states)
         }
 
     def reset(self, seed=None, options=None):
@@ -72,6 +87,11 @@ class GridWorldEnv(gym.Env):
                 0, self.size, size=2, dtype=int
             )
 
+         # We will sample the agent's internal states randomly until it does not coincide with the agent's optimal internal states
+        self._internal_states = self.drive.optimal_internal_states
+        while np.array_equal(self._internal_states, self.drive.optimal_internal_states):
+            self._internal_states = self.np_random.integers(0, 10, self._internal_state_size, dtype=np.float32)
+
         observation = self._get_obs()
         info = self._get_info()
 
@@ -87,8 +107,11 @@ class GridWorldEnv(gym.Env):
         self._agent_location = np.clip(
             self._agent_location + direction, 0, self.size - 1
         )
-        # An episode is done iff the agent has reached the target
-        terminated = np.array_equal(self._agent_location, self._target_location)
+
+        # An episode is done iff the internal states reaches the optimal internal states
+        # H_i(t) = H*_i(t) for each i
+        terminated = np.array_equal(self._internal_states, self.drive.optimal_internal_states)
+
         reward = 1 if terminated else 0  # Binary sparse rewards
         observation = self._get_obs()
         info = self._get_info()
