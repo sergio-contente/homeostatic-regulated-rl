@@ -19,7 +19,7 @@ class GridWorldEnv2Resources(gym.Env):
 
         # Homeostatic Regulated Environment variables
         self._internal_state_size = self.drive.get_internal_state_size()
-        self._outcome = 50
+        self._outcome = 20
         self._internal_states = np.zeros(self._internal_state_size, dtype=np.float32)
 
         # Observations are dictionaries with the agent's internal states only
@@ -128,7 +128,7 @@ class GridWorldEnv2Resources(gym.Env):
         
         # An episode is done if internal states are close to optimal
         # You might want to define a threshold for "close enough"
-        threshold = 10
+        threshold = 5
         terminated = self.drive.has_reached_optimal(self._internal_states, threshold)
         
         # # Small reward for consuming resources (optional)

@@ -3,6 +3,177 @@ from ...gymnasium_env.envs.grid_world_2_resources import GridWorldEnv2Resources
 import numpy as np
 import matplotlib.pyplot as plt
 import gymnasium as gym
+from datetime import datetime
+import pygame
+import os
+
+def record_pygame_evaluation(agent, env, filepath="evaluation_video.mp4", num_episodes=5, fps=10):
+    """
+    Records the agent's evaluation in the environment and saves it as an MP4 file.
+    
+    Args:
+        agent: The trained Q-learning agent
+        env: The environment to evaluate in
+        filepath: Path to save the MP4 file
+        num_episodes: Number of episodes to record
+        fps: Frames per second for the output video
+    
+    Returns:
+        str: Path to the saved video file
+    """
+    try:
+        import imageio
+    except ImportError:
+        print("Please install imageio: pip install imageio imageio-ffmpeg")
+        return None
+    
+    # Create a temporary directory for frames
+    temp_dir = f"temp_frames_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    os.makedirs(temp_dir, exist_ok=True)
+    
+    
+    # Initialize pygame if not already done
+    if not pygame.get_init():
+        pygame.init()
+    
+    frames = []
+    frame_count = 0
+    total_reward = 0
+    
+    print(f"Recording {num_episodes} episodes to {filepath}...")
+    
+    for episode in range(num_episodes):
+        # Reset the environment
+        state, _ = env.reset()
+        episode_reward = 0
+        done = False
+        truncated = False
+        step_count = 0
+        
+        while not (done or truncated) and step_count < 500:  # Limit steps to prevent very long episodes
+            # Process the state and select the best action
+            if hasattr(agent, '_process_state'):
+                state_idx = agent._process_state(state)
+                action = np.argmax(agent.q_table[state_idx])
+            else:
+                # Fallback for agents without _process_state
+                action = agent.get_action(state)
+            
+            # Take the action
+            next_state, reward, done, truncated, _ = env.step(action)
+            
+            # Render the environment
+            env.render()
+            
+            # Capture the frame
+            surface = pygame.display.get_surface()
+            if surface is not None:
+                # Convert pygame surface to numpy array
+                frame = pygame.surfarray.array3d(surface)
+                frame = np.transpose(frame, (1, 0, 2))  # Reorder dimensions for imageio
+                
+                # Save frame
+                frames.append(frame)
+                frame_path = os.path.join(temp_dir, f"frame_{frame_count:06d}.png")
+                imageio.imwrite(frame_path, frame)
+                frame_count += 1
+            
+            # Update state and rewards
+            state = next_state
+            episode_reward += reward
+            step_count += 1
+            
+            # Small delay to make sure pygame renders correctly
+            pygame.time.delay(30)
+            
+        total_reward += episode_reward
+        print(f"Episode {episode+1}/{num_episodes} completed with reward: {episode_reward:.2f}")
+    
+    # Create the video from frames
+    print(f"Creating video from {frame_count} frames...")
+    
+    try:
+        # Use imageio to create the video
+        writer = imageio.get_writer(filepath, fps=fps)
+        for frame_idx in range(frame_count):
+            frame_path = os.path.join(temp_dir, f"frame_{frame_idx:06d}.png")
+            if os.path.exists(frame_path):
+                writer.append_data(imageio.imread(frame_path))
+        writer.close()
+        print(f"Video saved to {filepath}")
+    except Exception as e:
+        print(f"Error creating video: {e}")
+    
+    # Clean up temp directory
+    try:
+        for file in os.listdir(temp_dir):
+            os.remove(os.path.join(temp_dir, file))
+        os.rmdir(temp_dir)
+        print(f"Cleaned up temporary files in {temp_dir}")
+    except Exception as e:
+        print(f"Error cleaning up temporary files: {e}")
+    
+    # Calculate average reward
+    avg_reward = total_reward / num_episodes
+    print(f"Evaluation complete: Average reward over {num_episodes} episodes: {avg_reward:.2f}")
+    
+    return filepath
+
+
+# Modified test_trained_agent function to include recording
+def test_trained_agent_with_recording(agent=None, wrapped_env=None, record=True, video_path="agent_evaluation.mp4"):
+    """
+    Function to test and record a trained agent.
+    """
+    # Initialize the environment with visualization for testing if not provided
+    if wrapped_env is None:
+        env = GridWorldEnv2Resources(
+            config_path="config/config.yaml",
+            drive_type="base",
+            render_mode="human"
+        )
+        wrapped_env = GridWorldWrapper(env)
+    
+    # If no agent was provided, load one from a file
+    if agent is None:
+        initial_state_size = 100  # Same initial size used in training
+        action_size = wrapped_env.action_space.n
+        
+        agent = CustomQLearning(
+            state_size=initial_state_size,
+            action_size=action_size
+        )
+        
+        try:
+            # Try to load the complete model first
+            agent.load_model("qlearning_model.pkl")
+            print("Model successfully loaded!")
+        except FileNotFoundError:
+            try:
+                # If not found, try to load just the Q-table
+                agent.load_q_table("q_table_resource_env.npy")
+                print("Q-table successfully loaded!")
+                print("States map not available.")
+                agent._state_index_map = {}  # Initialize an empty map
+            except FileNotFoundError:
+                print("Train the agent first, no model was found.")
+                return
+    
+    # Record the evaluation if requested
+    if record:
+        print(f"Recording evaluation to {video_path}...")
+        video_file = record_pygame_evaluation(agent, wrapped_env, filepath=video_path, num_episodes=5)
+        if video_file:
+            print(f"Evaluation recorded and saved to {video_file}")
+    else:
+        # Evaluate the trained agent using the specialized evaluation method
+        print("Evaluating the agent...")
+        avg_reward = agent.evaluate(env=wrapped_env, num_episodes=5, render=True)
+        print(f"Finished! Average reward: {avg_reward:.2f}")
+        return avg_reward
+
+# Example usage:
+# test_trained_agent_with_recording(video_path="homeostatic_agent_evaluation.mp4")
 
 
 class GridWorldWrapper(gym.Wrapper):
@@ -82,9 +253,9 @@ class CustomQLearning(QLearning):
             try:
                 state_key = tuple(np.round(state, 2))
             except Exception as e:
-                print(f"Erro ao processar estado: {e}")
-                print(f"Tipo do estado: {type(state)}")
-                print(f"Estado: {state}")
+                print(f"Error in processing the state: {e}")
+                print(f"State type: {type(state)}")
+                print(f"State: {state}")
                 # Usa uma representação de string como fallback
                 state_key = str(state)
         
@@ -98,7 +269,7 @@ class CustomQLearning(QLearning):
                 new_q_table = np.zeros((new_size, self.action_size))
                 new_q_table[:self.q_table.shape[0], :] = self.q_table
                 self.q_table = new_q_table
-                print(f"Q-table expandida para {new_size} estados")
+                print(f"Q-table expanded to {new_size} states")
                 
         return self._state_index_map[state_key]
     
@@ -126,7 +297,7 @@ class CustomQLearning(QLearning):
         
         with open(filepath, 'wb') as f:
             pickle.dump(model_data, f)
-        print(f"Modelo salvo em {filepath}")
+        print(f"Model savec in {filepath}")
     
     def load_model(self, filepath):
         """
@@ -151,7 +322,7 @@ class CustomQLearning(QLearning):
         self.epsilon_min = params['epsilon_min']
         self.epsilon_decay = params['epsilon_decay']
         
-        print(f"Modelo carregado de {filepath}")
+        print(f"Model loaded from {filepath}")
     
     def evaluate(self, env, num_episodes=10, render=False):
         """
@@ -251,23 +422,23 @@ def train_qlearning_agent():
     # Plota a evolução das recompensas
     plt.figure(figsize=(10, 5))
     plt.plot(rewards)
-    plt.title('Recompensas por Episódio')
-    plt.xlabel('Episódio')
-    plt.ylabel('Recompensa Total')
+    plt.title('Rewards by episode')
+    plt.xlabel('Episode')
+    plt.ylabel('Total Reward')
     
     # Adiciona uma linha de média móvel para visualizar tendência
     window_size = min(20, len(rewards)//5)
     if window_size > 1:
         moving_avg = np.convolve(rewards, np.ones(window_size)/window_size, mode='valid')
         plt.plot(range(window_size-1, len(rewards)), moving_avg, 'r-', linewidth=2)
-        plt.legend(['Recompensa por episódio', f'Média móvel ({window_size} episódios)'])
+        plt.legend(['Reward by episode', f'Moving Average ({window_size} episodes)'])
     
     plt.savefig('rewards_plot.png')
     plt.close()
     
     # Informações sobre o treinamento
-    print(f"Número de estados únicos encontrados: {len(agent._state_index_map)}")
-    print(f"Tamanho final da Q-table: {agent.q_table.shape}")
+    print(f"Number of unique states found: {len(agent._state_index_map)}")
+    print(f"Final size of Q-Table: {agent.q_table.shape}")
     
     return agent, rewards, wrapped_env
 
@@ -329,11 +500,15 @@ def test_experiment_qlearning():
     print("=== TRAINING ===")
     agent, rewards, wrapped_env = train_qlearning_agent()
     
-    # Testa o agente treinado
-    print("\n=== TESTING ===")
-    test_trained_agent(agent, wrapped_env)
+    # # Testa o agente treinado
+    # print("\n=== TESTING ===")
+    # test_trained_agent(agent, wrapped_env)
 
 
 if __name__ == "__main__":
-    #test_experiment_qlearning()
-    test_trained_agent()
+    # Option 1: Train and then test with recording
+    test_experiment_qlearning()  # Train the agent
+    test_trained_agent_with_recording(video_path="homeostatic_agent.mp4")  # Record the evaluation
+    
+    # Option 2: Just record a previously trained agent
+    # test_trained_agent_with_recording(video_path="homeostatic_agent.mp4")
