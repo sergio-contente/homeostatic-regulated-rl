@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from utils.e_greedy import epsilon_greedy_policy
+from ..utils.e_greedy import epsilon_greedy_policy
 
 class QLearning:
     """

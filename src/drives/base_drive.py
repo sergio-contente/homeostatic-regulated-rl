@@ -83,7 +83,7 @@ class BaseDrive():
         reward = self._current_drive - new_drive
         return reward
     
-    def has_reached_optimal(self, current_internal_states):
+    def has_reached_optimal(self, current_internal_states, threshold):
         """
         Checks if the current internal states have reached the optimal values.
         
@@ -94,8 +94,7 @@ class BaseDrive():
         :return: Boolean indicating whether optimal states are reached.
         """
         drive_value = self.compute_drive(current_internal_states)
-        threshold = 1e-3
-        
+                
         # Convert tensor to scalar if needed
         if isinstance(drive_value, torch.Tensor):
             drive_value = drive_value.item()
