@@ -111,7 +111,6 @@ agent = QLearning(
 num_episodes = 500
 rewards = agent.train(wrapped_env, num_episodes=num_episodes)
 
-# ADICIONE O CÓDIGO DE SALVAMENTO AQUI
 import pickle
 import os
 
@@ -133,3 +132,4 @@ print(f"Modelo salvo em: {model_filename}")
 env_eval = GridWorldEnv2Resources(config_path=config_path, drive_type=drive_type, render_mode='human')
 wrapped_env_eval = DiscretizeWrapper(env_eval, n_bins=n_bins, low=low, high=high)
 agent.evaluate(wrapped_env_eval, num_episodes=1, render=True)
+evaluate_agent(agent, wrapped_env_eval, rewards, internal_state_dim=2)
