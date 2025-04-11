@@ -18,7 +18,7 @@ class QLearning:
     """
     
     def __init__(self, state_size, action_size, learning_rate=0.1, discount_factor=0.99,
-                 epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995):
+                 epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, n_bins = 20):
         """
         Initializes the Q-Learning agent.
         
@@ -38,6 +38,7 @@ class QLearning:
         self.epsilon = epsilon
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
+        self.n_bins = n_bins
         
         # Initialize Q-table with zeros
         self.q_table = np.zeros((state_size, action_size))
@@ -52,7 +53,8 @@ class QLearning:
         Returns:
             int: The selected action
         """
-        return epsilon_greedy_policy(self.q_table[state], self.epsilon)
+        q_values = self.q_table[state]
+        return epsilon_greedy_policy(q_values, self.epsilon)
     
     def update_q_table(self, state, action, reward, next_state, done):
         """
@@ -166,35 +168,19 @@ class QLearning:
         return rewards_per_episode
     
     def _process_state(self, state):
-        """
-        Converts a state to an index in the Q-table if necessary.
-        Can be overridden to process more complex states.
+        # Se for dict vindo do ambiente original
+        if isinstance(state, dict) and "internal_states" in state:
+            raise ValueError("O ambiente não foi discretizado. Use o DiscretizeWrapper.")
         
-        Args:
-            state: Environment state (can be a number, array, etc.)
-            
-        Returns:
-            int: State index in the Q-table
-        """
-        # If state is already an integer, return as is
+        if isinstance(state, (list, np.ndarray)):
+            return np.ravel_multi_index(state, dims=[self.n_bins] * len(state))
+
         if isinstance(state, (int, np.integer)):
             return state
-        
-        # If it's an array or tensor, convert to an index
-        if isinstance(state, (np.ndarray, list, torch.Tensor)):
-            # Simple implementation - override this method for more complex states
-            if hasattr(state, 'item') and callable(getattr(state, 'item')):
-                return state.item()  # For PyTorch tensors
-            elif hasattr(state, 'tolist') and callable(getattr(state, 'tolist')):
-                return hash(tuple(state.tolist()))  # For NumPy arrays
-            else:
-                return hash(tuple(state))  # For lists
-                
-        # For other types, try to convert to hash
-        try:
-            return hash(state)
-        except:
-            raise ValueError(f"Could not process state: {state}. Implement a suitable state processing method.")
+
+        raise ValueError(f"Unsupported state format: {state}")
+
+
 
     def evaluate(self, env, num_episodes=10, render=False):
         """

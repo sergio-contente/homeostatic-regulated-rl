@@ -25,7 +25,7 @@ class GridWorldEnv2Resources(gym.Env):
         # Observations are dictionaries with the agent's internal states only
         self.observation_space = spaces.Dict(
             {
-                "internal_states": spaces.Box(0, 1000, shape=(self._internal_state_size,), dtype=np.float32)
+                "internal_states": spaces.Box(0, 300, shape=(self._internal_state_size,), dtype=np.float32)
             }
         )
 
