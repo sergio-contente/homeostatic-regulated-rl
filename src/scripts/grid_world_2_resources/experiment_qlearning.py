@@ -8,36 +8,33 @@ from collections import Counter
 
 def evaluate_agent(agent, env, rewards, internal_state_dim=2, success_threshold=0.0):
     """
-    Avaliação visual e numérica do agente Q-Learning.
+    Visual and numerical evaluation of the Q-Learning agent.
     
-    Parâmetros:
-        - agent: instância do QLearning
-        - env: ambiente Gymnasium (discretizado)
-        - rewards: lista de recompensas por episódio
-        - internal_state_dim: número de dimensões do estado interno (default=2)
-        - success_threshold: recompensa mínima para considerar sucesso
+    Parameters:
+        - agent: instance of QLearning
+        - env: Gymnasium environment (discretized)
+        - rewards: list of rewards per episode
+        - internal_state_dim: number of internal state dimensions (default=2)
+        - success_threshold: minimum reward to consider the episode successful
     """
     
-    # === 1. Gráfico de recompensa ===
     rewards_series = pd.Series(rewards)
     rolling_avg = rewards_series.rolling(window=10).mean()
     
     plt.figure(figsize=(10, 5))
-    plt.plot(rewards_series, alpha=0.3, label="Recompensa bruta")
-    plt.plot(rolling_avg, color="blue", linewidth=2, label="Média móvel (10)")
-    plt.xlabel("Episódios")
-    plt.ylabel("Recompensa total")
-    plt.title("Desempenho do Agente Q-Learning")
+    plt.plot(rewards_series, alpha=0.3, label="Raw reward")
+    plt.plot(rolling_avg, color="blue", linewidth=2, label="Moving average (10)")
+    plt.xlabel("Episodes")
+    plt.ylabel("Total reward")
+    plt.title("Q-Learning Agent Performance")
     plt.legend()
     plt.grid(True)
     plt.show()
 
-    # === 2. Taxa de sucesso ===
     successes = np.sum(np.array(rewards) >= success_threshold)
     success_rate = successes / len(rewards)
-    print(f"✅ Taxa de sucesso (reward >= {success_threshold}): {success_rate:.2%}")
+    print(f"✅ Success rate (reward >= {success_threshold}): {success_rate:.2%}")
     
-    # === 3. Distribuição das ações (política atual) ===
     action_counts = Counter()
     state, _ = env.reset()
     state = agent._process_state(state)
@@ -48,62 +45,61 @@ def evaluate_agent(agent, env, rewards, internal_state_dim=2, success_threshold=
         next_state, _, done, _, _ = env.step(action)
         state = agent._process_state(next_state)
     
-    print("📊 Ações tomadas em um episódio de avaliação:")
+    print("📊 Actions taken in one evaluation episode:")
     for a in range(agent.action_size):
-        print(f" - Ação {a}: {action_counts[a]} vezes")
+        print(f" - Action {a}: {action_counts[a]} times")
 
-    # === 4. Q-table por ação (heatmaps) ===
     fig, axes = plt.subplots(1, agent.action_size, figsize=(5 * agent.action_size, 5))
     for a in range(agent.action_size):
         try:
             q_vals_action = agent.q_table[:, a].reshape([agent.n_bins] * internal_state_dim)
             ax = axes[a] if agent.action_size > 1 else axes
             im = ax.imshow(q_vals_action, cmap="viridis", origin="lower")
-            ax.set_title(f"Ação {a}")
+            ax.set_title(f"Action {a}")
             plt.colorbar(im, ax=ax)
         except:
-            print(f"⚠️ Não foi possível plotar Q-table para ação {a} (verifique shape).")
-    plt.suptitle("Q-table por ação")
+            print(f"⚠️ Could not plot Q-table for action {a} (check shape).")
+    plt.suptitle("Q-table per action")
     plt.tight_layout()
     plt.show()
 
-    # === 5. Política ótima (argmax da Q-table) ===
     try:
         policy = np.argmax(agent.q_table, axis=1)
         policy_grid = policy.reshape([agent.n_bins] * internal_state_dim)
 
         plt.figure(figsize=(6, 5))
         plt.imshow(policy_grid, cmap="Accent", origin="lower")
-        plt.title("Política ótima (ação por estado)")
-        plt.colorbar(label="Ação")
-        plt.xlabel("Dimensão 1")
-        plt.ylabel("Dimensão 2")
+        plt.title("Optimal policy (action per state)")
+        plt.colorbar(label="Action")
+        plt.xlabel("Dimension 1")
+        plt.ylabel("Dimension 2")
         plt.grid(False)
         plt.show()
     except:
-        print("⚠️ Não foi possível visualizar a política (estado não 2D?)")
-# 1. Parâmetros de discretização
-n_bins = 20
+        print("⚠️ Could not visualize the policy (state not 2D?)")
+
+# === Parameters for discretization ===
+n_bins = 50
 low, high = 0.0, 300.0
 
-# 2. Criação do ambiente base
+# === Create base environment ===
 config_path = "config/config.yaml"
-drive_type = "interoceptive_drive"  #  "elliptic_drive", "interoceptive_drive"
-env = GridWorldEnv2Resources(config_path=config_path, drive_type=drive_type)
+drive_type = "elliptic_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
+env = GridWorldEnv2Resources(config_path=config_path, drive_type=drive_type, render_mode=None)
 
-# 3. Envelopar com DiscretizeWrapper
+# === Wrap with discretization ===
 wrapped_env = DiscretizeWrapper(env, n_bins=n_bins, low=low, high=high)
 
-# 4. Calcular número de estados
-internal_state_dim = wrapped_env.observation_space.shape[0]  # Ex: 2 estados internos
+# === Calculate number of states and actions ===
+internal_state_dim = wrapped_env.observation_space.shape[0]
 state_size = n_bins ** internal_state_dim
-action_size = wrapped_env.action_space.n  # Deve ser 3 no seu caso
+action_size = wrapped_env.action_space.n
 
-# 5. Inicializar o agente
+# === Initialize the Q-learning agent ===
 agent = QLearning(
     state_size=state_size,
     action_size=action_size,
-    n_bins=n_bins,  # necessário para processar o estado corretamente
+    n_bins=n_bins,
     learning_rate=0.1,
     discount_factor=0.99,
     epsilon=1.0,
@@ -111,73 +107,29 @@ agent = QLearning(
     epsilon_decay=0.995
 )
 
-# 6. Treinamento
+# === Train the agent ===
 num_episodes = 500
 rewards = agent.train(wrapped_env, num_episodes=num_episodes)
 
+# ADICIONE O CÓDIGO DE SALVAMENTO AQUI
+import pickle
+import os
 
-# Avaliação visual e estatística
-evaluate_agent(agent, wrapped_env, rewards, internal_state_dim=2)
+# Criar diretório de modelos se não existir
+os.makedirs("models", exist_ok=True)
 
+# Obter os parâmetros do drive para identificar o modelo
+n_param = getattr(env.drive, 'n', 1)
+m_param = getattr(env.drive, 'm', 1)
 
-# # 7. (Opcional) Avaliação
-# avg_reward = agent.evaluate(wrapped_env, num_episodes=10, render=False)
-# print(f"Average evaluation reward: {avg_reward:.2f}")
+# Salvar o modelo com nome específico incluindo os parâmetros
+model_filename = f"models/qlearning_model_{drive_type}_n{n_param}_m{m_param}.pkl"
+with open(model_filename, 'wb') as f:
+    pickle.dump(agent.q_table, f)
+    
+print(f"Modelo salvo em: {model_filename}")
 
-# # 8. (Opcional) Plotar gráfico de recompensas
-# import matplotlib.pyplot as plt
-# plt.plot(rewards)
-# plt.xlabel("Episódios")
-# plt.ylabel("Recompensa total")
-# plt.title("Desempenho do Agente Q-Learning")
-# plt.grid(True)
-# plt.show()
-
-# import matplotlib.pyplot as plt
-# import pandas as pd
-
-# rewards_series = pd.Series(rewards)
-# rolling_avg = rewards_series.rolling(window=10).mean()
-
-# plt.plot(rewards_series, alpha=0.3, label="Recompensa bruta")
-# plt.plot(rolling_avg, color="blue", linewidth=2, label="Média móvel (10)")
-# plt.xlabel("Episódios")
-# plt.ylabel("Recompensa total")
-# plt.title("Desempenho do Agente Q-Learning")
-# plt.legend()
-# plt.grid(True)
-# plt.show()
-
-# import matplotlib.pyplot as plt
-
-# def plot_q_table(agent, internal_state_dim):
-#     q_table = agent.q_table
-#     n_actions = q_table.shape[1]
-
-#     fig, axes = plt.subplots(1, n_actions, figsize=(5 * n_actions, 5))
-#     for a in range(n_actions):
-#         q_vals_action = q_table[:, a].reshape([agent.n_bins] * internal_state_dim)
-
-#         ax = axes[a]
-#         im = ax.imshow(q_vals_action, cmap="viridis", origin="lower")
-#         ax.set_title(f"Ação {a}")
-#         plt.colorbar(im, ax=ax)
-
-#     plt.suptitle("Q-table por ação")
-#     plt.tight_layout()
-#     plt.show()
-
-# def plot_policy(agent, internal_state_dim):
-#     policy = np.argmax(agent.q_table, axis=1)
-#     policy_grid = policy.reshape([agent.n_bins] * internal_state_dim)
-
-#     plt.imshow(policy_grid, cmap="Accent", origin="lower")
-#     plt.title("Política ótima (ação por estado)")
-#     plt.colorbar()
-#     plt.show()
-
-import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
-from collections import Counter
-
+# Continua com a avaliação
+env_eval = GridWorldEnv2Resources(config_path=config_path, drive_type=drive_type, render_mode='human')
+wrapped_env_eval = DiscretizeWrapper(env_eval, n_bins=n_bins, low=low, high=high)
+agent.evaluate(wrapped_env_eval, num_episodes=1, render=True)

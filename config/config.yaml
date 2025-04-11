@@ -9,8 +9,8 @@ drive_params:
 
   # Base drive configs
   base_drive:
-    n: 3
-    m: 4
+    n: 2
+    m: 5
 
   # Elliptic drive configs
   elliptic_drive:
@@ -18,5 +18,5 @@ drive_params:
 
   # Interoceptive drive configs
   interoceptive_drive:
-    eta: 0.5
+    eta: 0.2
   
