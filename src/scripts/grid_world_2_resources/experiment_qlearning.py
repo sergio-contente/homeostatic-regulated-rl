@@ -157,3 +157,4 @@ env_eval = GridWorldEnv2Resources(config_path=config_path, drive_type=drive_type
 wrapped_env_eval = DiscretizeWrapper(env_eval, n_bins=n_bins, low=low, high=high)
 #agent.evaluate(wrapped_env_eval, num_episodes=1, render=True)
 evaluate_agent(agent, wrapped_env_eval, rewards, internal_state_dim=2)
+

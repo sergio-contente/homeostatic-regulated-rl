@@ -60,19 +60,10 @@ class QLearning:
         # Converte os estados para índices
         state_idx = self._process_state(state)
         next_state_idx = self._process_state(next_state)
+
+        self.q_table[state_idx, action] += self.learning_rate * (reward + self.discount_factor * np.max(self.q_table[next_state_idx, :]) - self.q_table[state_idx, action])
+
         
-        # Calcula o Q-value atual
-        current_q = self.q_table[state_idx, action]
-        
-        # Calcula o target Q-value
-        if done:
-            target_q = reward
-        else:
-            max_next_q = np.max(self.q_table[next_state_idx])
-            target_q = reward + self.discount_factor * max_next_q
-        
-        # Atualiza o Q-value
-        self.q_table[state_idx, action] = current_q + self.learning_rate * (target_q - current_q)
     
     def decay_epsilon(self):
         """

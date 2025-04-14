@@ -74,11 +74,16 @@ class ClementineEnvironment(gym.Env):
 
         # Initialize internal states with random values between 0 and 1
 # Modificar para garantir que _internal_states tenha o mesmo tamanho que self.drive._optimal_internal_states
-        self._internal_states = np.random.choice(
-						range(-self.size, self.size+1), 
-						size=len(self.drive._optimal_internal_states)
-				).astype(np.int32)        
+        # self._internal_states = np.random.choice(
+				# 		range(-self.size, self.size+1), 
+				# 		size=len(self.drive._optimal_internal_states)
+				# ).astype(np.int32)        
         # Initial drive
+        self._internal_states = np.zeros(
+					len(self.drive._optimal_internal_states), 
+					dtype=np.int32
+						)
+
         initial_drive = self.drive.compute_drive(self._internal_states)
         self.drive.update_drive(initial_drive)
                 

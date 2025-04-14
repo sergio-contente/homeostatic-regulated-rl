@@ -99,6 +99,22 @@ def evaluate_agent(agent, env, rewards, internal_state_dim=2, success_threshold=
         plt.show()
     except:
         print("⚠️ Could not visualize the policy (state not 2D?)")
+    
+def collect_trajectory(agent, env, max_steps=500):
+    obs, _ = env.reset()
+    trajectory = [tuple(obs)]
+    done = False
+    steps = 0
+
+    while not done and steps < max_steps:
+        state_idx = agent.get_state_index(obs)
+        action = np.argmax(agent.q_table[state_idx])
+        obs, _, done, _, _ = env.step(action)
+        trajectory.append(tuple(obs))
+        steps += 1
+
+    return np.array(trajectory)
+
 
 # === Parameters for discretization ===
 n_bins = 50
@@ -151,5 +167,5 @@ print(f"Modelo salvo em: {model_filename}")
 
 # Continua com a avaliação
 env_eval = ClementineEnvironment(config_path=config_path, drive_type=drive_type, render_mode='human')
-evaluate_agent(agent, env_eval, rewards, internal_state_dim=2)
-agent.evaluate(env_eval, num_episodes=1, render=True)
+#evaluate_agent(agent, env_eval, rewards, internal_state_dim=2)
+#agent.evaluate(env_eval, num_episodes=1, render=True)
