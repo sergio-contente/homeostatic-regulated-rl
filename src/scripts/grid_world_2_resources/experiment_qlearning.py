@@ -1,5 +1,6 @@
 import numpy as np
 from ...gymnasium_env.envs.grid_world_2_resources import GridWorldEnv2Resources
+from ...gymnasium_env.envs.clementine import ClementineEnvironment
 from ...agents.q_learning import QLearning
 from ...gymnasium_env.envs.wrappers.digitize_continuos import DiscretizeWrapper
 import pandas as pd
@@ -21,16 +22,37 @@ def evaluate_agent(agent, env, rewards, internal_state_dim=2, success_threshold=
     rewards_series = pd.Series(rewards)
     rolling_avg = rewards_series.rolling(window=10).mean()
     
-    plt.figure(figsize=(10, 5))
-    plt.plot(rewards_series, alpha=0.3, label="Raw reward")
-    plt.plot(rolling_avg, color="blue", linewidth=2, label="Moving average (10)")
-    plt.xlabel("Episodes")
-    plt.ylabel("Total reward")
-    plt.title("Q-Learning Agent Performance")
-    plt.legend()
-    plt.grid(True)
+    # RMSE from the max reward value obtained
+    max_reward = np.max(rewards)
+    mse = np.square(np.array(rewards) - max_reward).mean(axis=0)
+    mse_series = pd.Series([np.square(rewards[:i+1] - max_reward).mean() 
+                            for i in range(len(rewards))])
+    mse_rolling = mse_series.rolling(window=10).mean()
+    
+    # Plotar recompensas
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
+    
+    ax1.plot(rewards_series, alpha=0.3, label="Raw reward")
+    ax1.plot(rolling_avg, color="blue", linewidth=2, label="Moving average (10)")
+    ax1.set_ylabel("Total reward")
+    ax1.set_title("Q-Learning Agent Performance")
+    ax1.legend()
+    ax1.grid(True)
+    
+    # Plotar MSE
+    ax2.plot(mse_series, alpha=0.3, color="red", label="MSE")
+    ax2.plot(mse_rolling, color="darkred", linewidth=2, label="MSE Moving average (10)")
+    ax2.set_xlabel("Episodes")
+    ax2.set_ylabel("Mean Squared Error")
+    ax2.set_title(f"Error relative to max reward ({max_reward:.2f})")
+    ax2.legend()
+    ax2.grid(True)
+    
+    plt.tight_layout()
     plt.show()
-
+    
+    print(f"📊 Final MSE: {mse:.4f}")
+    
     successes = np.sum(np.array(rewards) >= success_threshold)
     success_rate = successes / len(rewards)
     print(f"✅ Success rate (reward >= {success_threshold}): {success_rate:.2%}")
@@ -84,7 +106,8 @@ low, high = 0.0, 300.0
 
 # === Create base environment ===
 config_path = "config/config.yaml"
-drive_type = "elliptic_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
+drive_type = "base_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
+#env = ClementineEnvironment(config_path=config_path, drive_type=drive_type, render_mode=None)
 env = GridWorldEnv2Resources(config_path=config_path, drive_type=drive_type, render_mode=None)
 
 # === Wrap with discretization ===
@@ -97,6 +120,7 @@ action_size = wrapped_env.action_space.n
 
 # === Initialize the Q-learning agent ===
 agent = QLearning(
+    env=env,
     state_size=state_size,
     action_size=action_size,
     n_bins=n_bins,
@@ -109,7 +133,7 @@ agent = QLearning(
 
 # === Train the agent ===
 num_episodes = 500
-rewards = agent.train(wrapped_env, num_episodes=num_episodes)
+rewards = agent.train(env, num_episodes=num_episodes)
 
 import pickle
 import os
@@ -129,7 +153,8 @@ with open(model_filename, 'wb') as f:
 print(f"Modelo salvo em: {model_filename}")
 
 # Continua com a avaliação
+env_eval = ClementineEnvironment(config_path=config_path, drive_type=drive_type, render_mode='human')
 env_eval = GridWorldEnv2Resources(config_path=config_path, drive_type=drive_type, render_mode='human')
 wrapped_env_eval = DiscretizeWrapper(env_eval, n_bins=n_bins, low=low, high=high)
-agent.evaluate(wrapped_env_eval, num_episodes=1, render=True)
+#agent.evaluate(wrapped_env_eval, num_episodes=1, render=True)
 evaluate_agent(agent, wrapped_env_eval, rewards, internal_state_dim=2)

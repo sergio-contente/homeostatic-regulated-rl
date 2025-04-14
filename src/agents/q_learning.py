@@ -17,7 +17,7 @@ class QLearning:
         q_table (np.ndarray): Q-table to store Q-values for state-action pairs
     """
     
-    def __init__(self, state_size, action_size, learning_rate=0.1, discount_factor=0.99,
+    def __init__(self, env, state_size, action_size, learning_rate=0.1, discount_factor=0.99,
                  epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, n_bins = 20):
         """
         Initializes the Q-Learning agent.
@@ -39,7 +39,7 @@ class QLearning:
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
         self.n_bins = n_bins
-        
+        self.size = env.size
         # Initialize Q-table with zeros
         self.q_table = np.zeros((state_size, action_size))
         
@@ -57,36 +57,22 @@ class QLearning:
         return epsilon_greedy_policy(q_values, self.epsilon)
     
     def update_q_table(self, state, action, reward, next_state, done):
-        """
-        Updates the Q-table using the Bellman equation.
+        # Converte os estados para índices
+        state_idx = self._process_state(state)
+        next_state_idx = self._process_state(next_state)
         
-        Args:
-            state (int): Current state
-            action (int): Action taken
-            reward (float): Reward received
-            next_state (int): Next state
-            done (bool): Indicates if the episode is finished
-            
-        Returns:
-            float: Value of the error (difference between old and new value)
-        """
-        # Current Q-value for the state-action pair
-        current_q = self.q_table[state, action]
+        # Calcula o Q-value atual
+        current_q = self.q_table[state_idx, action]
         
-        # Maximum Q-value for the next state
+        # Calcula o target Q-value
         if done:
-            max_next_q = 0  # No future estimate if the episode is finished
+            target_q = reward
         else:
-            max_next_q = np.max(self.q_table[next_state])
+            max_next_q = np.max(self.q_table[next_state_idx])
+            target_q = reward + self.discount_factor * max_next_q
         
-        # Calculate the target value using the Bellman equation
-        target_q = reward + self.discount_factor * max_next_q
-        
-        # Update the Q-value
-        self.q_table[state, action] = current_q + self.learning_rate * (target_q - current_q)
-        
-        # Return the TD (Temporal Difference) error
-        return target_q - current_q
+        # Atualiza o Q-value
+        self.q_table[state_idx, action] = current_q + self.learning_rate * (target_q - current_q)
     
     def decay_epsilon(self):
         """
@@ -168,17 +154,28 @@ class QLearning:
         return rewards_per_episode
     
     def _process_state(self, state):
+        """Processa o estado para uso na tabela Q."""
         # Se for dict vindo do ambiente original
         if isinstance(state, dict) and "internal_states" in state:
-            raise ValueError("O ambiente não foi discretizado. Use o DiscretizeWrapper.")
+            state = state["internal_states"]
         
-        if isinstance(state, (list, np.ndarray)):
-            return np.ravel_multi_index(state, dims=[self.n_bins] * len(state))
-
+        if isinstance(state, np.ndarray):
+            # Discretiza cada valor do array para um valor entre 0 e n_bins-1
+            discrete_state = []
+            for i, val in enumerate(state):
+                # Normaliza o valor para o intervalo [0, n_bins-1]
+                bin_idx = int(val * (self.n_bins / self.size))
+                bin_idx = max(0, min(self.n_bins - 1, bin_idx))  # Clip para garantir limites
+                discrete_state.append(bin_idx)
+                
+            # Converte o estado multi-dimensional para um índice único
+            return np.ravel_multi_index(tuple(discrete_state), dims=[self.n_bins] * len(state))
+            
         if isinstance(state, (int, np.integer)):
+            # Se já for um índice, retorna direto
             return state
-
-        raise ValueError(f"Unsupported state format: {state}")
+            
+        raise ValueError(f"Formato de estado não suportado: {type(state)}")
 
 
 

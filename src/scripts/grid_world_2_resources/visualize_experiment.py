@@ -7,7 +7,7 @@ from src.scripts.grid_world_2_resources.visualizer import load_and_visualize_qle
 
 # === Parâmetros ===
 max_val = 300.0
-model_path = "models/qlearning_model_base_drive_n2_m2.pkl"  # Ajuste o caminho conforme necessário
+model_path = "models/qlearning_model_base_drive_n1_m1.pkl"  # Ajuste o caminho conforme necessário
 output_dir = "./visualizacoes"
 
 # === Carregar e visualizar modelo ===

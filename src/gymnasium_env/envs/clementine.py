@@ -6,13 +6,13 @@ import numpy as np
 from ...utils.get_params import ParameterHandler
 
 
-class GridWorldEnv2Resources(gym.Env):
+class ClementineEnvironment(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
-    def __init__(self, config_path, drive_type, render_mode=None, max_homeostatic_value=300):
+    def __init__(self, config_path, drive_type, render_mode=None, size=200):
         # Window setup
         self.window_size = 800  # The size of the PyGame window
-        self.size = max_homeostatic_value
+        self.size = size
 
         # Drive setup
         self.parameter_manager = ParameterHandler(config_path)
@@ -24,25 +24,23 @@ class GridWorldEnv2Resources(gym.Env):
         self._internal_states = np.zeros(self._internal_state_size, dtype=np.float32)
 
         # Observations are dictionaries with the agent's internal states only
-        self.observation_space = spaces.Dict(
-            {
-                "internal_states": spaces.Box(0, 300, shape=(self._internal_state_size,), dtype=np.float32)
-            }
-        )
+        self.observation_space = spaces.Box(-size, size + 1, shape=(self._internal_state_size,), dtype=np.int32)
 
         # Define action space for homeostatic regulation
-        self.action_space = spaces.Discrete(3)
+        self.action_space = spaces.Discrete(5)
         """
-        0: Consume resource 0 (if available)
-        1: Consume resource 1 (if available)
-        2: Do nothing
+        0: Consume resource 0 
+        1: Consume resource 1
+        2: Not consume resource 0
+        3: Not consume resource 0
+        4: Do nothing
         """
         
         # Resource availability (changes over time)
         self._resources_available = np.ones(self._internal_state_size, dtype=bool)
         
         # Resource regeneration parameters
-        self._resource_regen_prob = 0.3  # Probability of resource regeneration per step
+        self._resource_regen_prob = 1  # Probability of resource regeneration per step
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
@@ -69,9 +67,7 @@ class GridWorldEnv2Resources(gym.Env):
         }
 
     def _get_obs(self):
-        return {
-            "internal_states": self._internal_states
-        }
+        return self._internal_states
 
     def _get_info(self):
         return {
@@ -84,8 +80,11 @@ class GridWorldEnv2Resources(gym.Env):
         super().reset(seed=seed)
 
         # Initialize internal states with random values between 0 and 1
-        self._internal_states = np.ones(self._internal_state_size).astype(np.float32) * 100
-        
+# Modificar para garantir que _internal_states tenha o mesmo tamanho que self.drive._optimal_internal_states
+        self._internal_states = np.random.choice(
+						range(-self.size, self.size+1), 
+						size=len(self.drive._optimal_internal_states)
+				).astype(np.int32)        
         # Initial drive
         initial_drive = self.drive.compute_drive(self._internal_states)
         self.drive.update_drive(initial_drive)
@@ -106,16 +105,20 @@ class GridWorldEnv2Resources(gym.Env):
         
         # Apply the chosen action to modify internal states
         if action == 0 and self._resources_available[0]:  # Consume resource 0
-            self._internal_states[0] = np.minimum(self._internal_states[0] + self._outcome, self.size)
+            self._internal_states[0] = min(self._internal_states[0] + self._outcome, self.size)
             self._resources_available[0] = False  # Resource consumed
             resource_consumed = True
         elif action == 1 and self._resources_available[1]:  # Consume resource 1
-            self._internal_states[1] = np.minimum(self._internal_states[1] + self._outcome, self.size)
+            self._internal_states[1] = min(self._internal_states[1] + self._outcome, self.size)
             self._resources_available[1] = False  # Resource consumed
             resource_consumed = True
-        # Action 2 is do nothing, so we don't change internal states
-        decay_rate = 200  # Adjust as needed
-        self._internal_states = np.maximum(0.0, self._internal_states * (1 - 1/decay_rate))
+        elif action == 2:
+            self._internal_states[0] = max(self._internal_states[0] - 1, -self.size)
+        elif action == 3:
+            self._internal_states[1] = max(self._internal_states[1] - 1, -self.size)
+        # # Action 2 is do nothing, so we don't change internal states
+        # decay_rate = 200  # Adjust as needed
+        # self._internal_states = np.maximum(0.0, self._internal_states * (1 - 1/decay_rate))
 
         # Updates drive and reward
         new_drive = self.drive.compute_drive(self._internal_states)
@@ -133,8 +136,8 @@ class GridWorldEnv2Resources(gym.Env):
         terminated = self.drive.has_reached_optimal(self._internal_states, threshold)
         
         # # Small reward for consuming resources (optional)
-        if resource_consumed:
-            reward += 0.5
+        # if resource_consumed:
+        #     reward += 0.5
             
         # Big reward if reached optimal internal state
         if terminated:
