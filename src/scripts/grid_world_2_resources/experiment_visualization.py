@@ -49,7 +49,7 @@ def test_render_environment():
             print(f"Step {i+1}:")
             print(f"  Action: {action_names[action]}")
             print(f"  Internal states: {obs['internal_states']}")
-            print(f"  Available resources: {obs['resources_available']}")
+            print(f"  Available resources: {info['resources_available']}")
             print(f"  Reward: {reward:.4f}")
             print(f"  Drive: {info['drive']:.4f}")
             
