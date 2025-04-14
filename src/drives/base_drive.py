@@ -84,20 +84,15 @@ class BaseDrive():
         return reward
     
     def has_reached_optimal(self, current_internal_states, threshold):
-        """
-        Checks if the current internal states have reached the optimal values.
+        # Obter as chaves do dicionário de estados ótimos
+        keys = list(self._optimal_internal_states.keys())
+        # print(self._optimal_internal_states)
+        # print(current_internal_states)
         
-        This is determined by checking if the drive value is below a small threshold,
-        indicating that the internal states are very close to their optimal values.
-        
-        :param current_internal_states: Current internal states (H_t).
-        :return: Boolean indicating whether optimal states are reached.
-        """
-        drive_value = self.compute_drive(current_internal_states)
-                
-        # Convert tensor to scalar if needed
-        if isinstance(drive_value, torch.Tensor):
-            drive_value = drive_value.item()
+        for i, key in enumerate(keys):
+            optimal_value = self._optimal_internal_states[key]
+            current_value = current_internal_states[i]  # Assumindo que current_internal_states é um array
             
-        # Check if drive is close enough to zero
-        return drive_value < threshold
+            if abs(optimal_value - current_value) > threshold:
+                return False
+        return True

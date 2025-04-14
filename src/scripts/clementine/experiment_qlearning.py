@@ -108,15 +108,12 @@ low, high = 0.0, 300.0
 config_path = "config/config.yaml"
 drive_type = "base_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
 #env = ClementineEnvironment(config_path=config_path, drive_type=drive_type, render_mode=None)
-env = GridWorldEnv2Resources(config_path=config_path, drive_type=drive_type, render_mode=None)
-
-# === Wrap with discretization ===
-wrapped_env = DiscretizeWrapper(env, n_bins=n_bins, low=low, high=high)
+env = ClementineEnvironment(config_path=config_path, drive_type=drive_type, render_mode=None)
 
 # === Calculate number of states and actions ===
-internal_state_dim = wrapped_env.observation_space.shape[0]
+internal_state_dim = env.observation_space.shape[0]
 state_size = n_bins ** internal_state_dim
-action_size = wrapped_env.action_space.n
+action_size = env.action_space.n
 
 # === Initialize the Q-learning agent ===
 agent = QLearning(
@@ -153,7 +150,6 @@ with open(model_filename, 'wb') as f:
 print(f"Modelo salvo em: {model_filename}")
 
 # Continua com a avaliação
-env_eval = GridWorldEnv2Resources(config_path=config_path, drive_type=drive_type, render_mode='human')
-wrapped_env_eval = DiscretizeWrapper(env_eval, n_bins=n_bins, low=low, high=high)
-#agent.evaluate(wrapped_env_eval, num_episodes=1, render=True)
-evaluate_agent(agent, wrapped_env_eval, rewards, internal_state_dim=2)
+env_eval = ClementineEnvironment(config_path=config_path, drive_type=drive_type, render_mode='human')
+evaluate_agent(agent, env_eval, rewards, internal_state_dim=2)
+agent.evaluate(env_eval, num_episodes=1, render=True)

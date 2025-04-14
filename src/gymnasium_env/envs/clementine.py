@@ -11,7 +11,7 @@ class ClementineEnvironment(gym.Env):
 
     def __init__(self, config_path, drive_type, render_mode=None, size=200):
         # Window setup
-        self.window_size = 800  # The size of the PyGame window
+        self.window_size = 500  # The size of the PyGame window
         self.size = size
 
         # Drive setup
@@ -36,12 +36,6 @@ class ClementineEnvironment(gym.Env):
         4: Do nothing
         """
         
-        # Resource availability (changes over time)
-        self._resources_available = np.ones(self._internal_state_size, dtype=bool)
-        
-        # Resource regeneration parameters
-        self._resource_regen_prob = 1  # Probability of resource regeneration per step
-
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
 
@@ -72,7 +66,6 @@ class ClementineEnvironment(gym.Env):
     def _get_info(self):
         return {
             "drive": self.drive.compute_drive(self._internal_states),
-             "resources_available": self._resources_available
             }
 
     def reset(self, seed=None, options=None):
@@ -88,10 +81,8 @@ class ClementineEnvironment(gym.Env):
         # Initial drive
         initial_drive = self.drive.compute_drive(self._internal_states)
         self.drive.update_drive(initial_drive)
-        
+                
         # All resources available at start
-        self._resources_available = np.ones(self._internal_state_size, dtype=bool)
-
         observation = self._get_obs()
         info = self._get_info()
 
@@ -100,39 +91,25 @@ class ClementineEnvironment(gym.Env):
 
         return observation, info
 
-    def step(self, action):
-        resource_consumed = False
-        
+    def step(self, action):        
         # Apply the chosen action to modify internal states
-        if action == 0 and self._resources_available[0]:  # Consume resource 0
+        if action == 0:  # Consume resource 0
             self._internal_states[0] = min(self._internal_states[0] + self._outcome, self.size)
-            self._resources_available[0] = False  # Resource consumed
-            resource_consumed = True
-        elif action == 1 and self._resources_available[1]:  # Consume resource 1
+        elif action == 1:  # Consume resource 1
             self._internal_states[1] = min(self._internal_states[1] + self._outcome, self.size)
-            self._resources_available[1] = False  # Resource consumed
-            resource_consumed = True
         elif action == 2:
-            self._internal_states[0] = max(self._internal_states[0] - 1, -self.size)
+            self._internal_states[0] = max(self._internal_states[0] - self._outcome, -self.size)
         elif action == 3:
-            self._internal_states[1] = max(self._internal_states[1] - 1, -self.size)
-        # # Action 2 is do nothing, so we don't change internal states
-        # decay_rate = 200  # Adjust as needed
-        # self._internal_states = np.maximum(0.0, self._internal_states * (1 - 1/decay_rate))
+            self._internal_states[1] = max(self._internal_states[1] - self._outcome, -self.size)
 
         # Updates drive and reward
         new_drive = self.drive.compute_drive(self._internal_states)
         reward = self.drive.compute_reward(new_drive)
         self.drive.update_drive(new_drive)
         
-        # Resource regeneration
-        for i in range(self._internal_state_size):
-            if not self._resources_available[i] and self.np_random.random() < self._resource_regen_prob:
-                self._resources_available[i] = True
-        
         # An episode is done if internal states are close to optimal
         # You might want to define a threshold for "close enough"
-        threshold = 2
+        threshold = self._outcome / 2 
         terminated = self.drive.has_reached_optimal(self._internal_states, threshold)
         
         # # Small reward for consuming resources (optional)
@@ -142,7 +119,6 @@ class ClementineEnvironment(gym.Env):
         # Big reward if reached optimal internal state
         if terminated:
             print("Achieved Homeostatic Point")
-            reward += 10.0
 
         observation = self._get_obs()
         info = self._get_info()
@@ -209,7 +185,7 @@ class ClementineEnvironment(gym.Env):
                     print(f"Could not draw optimal marker for state {i}: {e}")
 
                 # Label with absolute value and percentage
-                percentage = (value / max_value) * 100 if max_value > 0 else 0
+                percentage = ((value + self.size) / (2 * self.size)) * 100
                 label = self.font.render(f"State {i}: {value:.1f} ({percentage:.1f}%)", True, self.colors["text"])
                 canvas.blit(label, (padding, y - 25))
 
@@ -225,10 +201,10 @@ class ClementineEnvironment(gym.Env):
                 x = padding + i * resource_spacing
                 y = resource_top + 20  # Add some vertical padding
 
-                color = self.colors["resource_available"] if self._resources_available[i] else self.colors["resource_unavailable"]
+                color = self.colors["resource_available"]
                 pygame.draw.circle(canvas, color, (x + 40, y), 30)
 
-                status = "Available" if self._resources_available[i] else "Unavailable"
+                status = "Available"
                 label = self.font.render(f"Resource {i}: {status}", True, self.colors["text"])
                 canvas.blit(label, (x, y + 40))
 
@@ -242,45 +218,12 @@ class ClementineEnvironment(gym.Env):
             drive_label = self.font.render(f"Current Drive: {drive_val:.3f}", True, self.colors["text"])
             canvas.blit(drive_label, (padding, info_top))
 
-            # Decay rate and intake
-            decay_info = self.font.render(f"Attenuation Rate (τ): {200}", True, self.colors["text"])
-            canvas.blit(decay_info, (padding, info_top + 25))
-
             outcome_info = self.font.render(f"Intake Volume (K): {self._outcome}", True, self.colors["text"])
             canvas.blit(outcome_info, (padding, info_top + 50))
 
-            # Right column information
-            right_col = self.window_size // 2 + 50
-
-            try:
-                optimal = self.drive._optimal_internal_states
-                if isinstance(optimal, (list, np.ndarray)):
-                    distances = [abs(self._internal_states[i] - optimal[i]) for i in range(len(self._internal_states))]
-                    avg_distance = sum(distances) / len(distances)
-                else:
-                    avg_distance = sum(abs(self._internal_states[i] - optimal.get(i, 0)) for i in range(len(self._internal_states))) / len(self._internal_states)
-                
-                distance_info = self.font.render(f"Distance to Optimal: {avg_distance:.1f}", True, self.colors["text"])
-                canvas.blit(distance_info, (right_col, info_top))
-
-                if avg_distance > 0:
-                    progress = max(0, min(100, (1 - (avg_distance / 200)) * 100))
-                    progress_info = self.font.render(f"Progress: {progress:.1f}%", True, self.colors["text"])
-                    canvas.blit(progress_info, (right_col, info_top + 25))
-            except Exception as e:
-                print(f"Could not calculate distance to optimal: {e}")
-
-            # Action counts if available
-            if hasattr(self, 'action_counts'):
-                actions_info = self.font.render(
-                    f"Actions: 0={self.action_counts[0]}, 1={self.action_counts[1]}, 2={self.action_counts[2]}",
-                    True, self.colors["text"]
-                )
-                canvas.blit(actions_info, (right_col, info_top + 50))
-
             # Final guidance text at the bottom
-            guidelines = self.font.render("Actions: 0=Consume Resource 0, 1=Consume Resource 1, 2=Wait", True, (100, 100, 100))
-            canvas.blit(guidelines, (padding, self.window_size - 100))
+            guidelines = self.font.render("Actions: 0=+Res0, 1=+Res1, 2=-Res0, 3=-Res1, 4=Wait", True, (100, 100, 100))
+            canvas.blit(guidelines, (padding, self.window_size - 50))
 
             if self.render_mode == "human":
                 self.window.blit(canvas, canvas.get_rect())

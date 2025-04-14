@@ -3,7 +3,7 @@ import sys
 import pickle
 import numpy as np
 import matplotlib.pyplot as plt
-from src.scripts.grid_world_2_resources.visualizer import load_and_visualize_qlearning_model
+from src.scripts.visualizer import load_and_visualize_qlearning_model
 
 # === Parâmetros ===
 max_val = 300.0
