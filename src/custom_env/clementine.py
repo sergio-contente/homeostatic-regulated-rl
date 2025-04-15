@@ -66,7 +66,7 @@ class Clementine:
                     self._render_frame()
 
             self.steps += 1
-            truncated = self.steps >= 1000  # Limita o número de passos por episódio
+            truncated = self.steps >= 1000  # Limit the number of steps per episode
             
             return observation, reward, terminated, truncated, {}
 
@@ -125,8 +125,8 @@ class Clementine:
         return rewards_per_episode
     
     def _process_state(self, state):
-        """Processa o estado para uso na tabela Q."""
-        # Se for dict vindo do ambiente original
+        """Process the state for use in the Q-table."""
+        # If it's a dict from the original environment
         if isinstance(state, dict) and "internal_states" in state:
             state = state["internal_states"]
         
@@ -194,7 +194,7 @@ class Clementine:
         return avg_reward
 
     def _render_frame(self):
-        """Renderiza o estado atual do ambiente usando pygame."""
+        """Renders the current state of the environment using pygame."""
         if not hasattr(self, 'screen'):
             pygame.init()
             self.screen_width = 600
@@ -203,15 +203,15 @@ class Clementine:
             pygame.display.set_caption("Clementine Environment")
             self.clock = pygame.time.Clock()
             
-        # Limpa a tela
+        # Clear the screen
         self.screen.fill((255, 255, 255))
         
-        # Desenha o estado atual
+        # Draw the current state
         center_x, center_y = self.screen_width // 2, self.screen_height // 2
         grid_size = min(self.screen_width, self.screen_height) - 100
         cell_size = grid_size // (2 * self.maxh + 1)
         
-        # Desenha a grade
+        # Draw the grid
         for i in range(-self.maxh, self.maxh + 1):
             for j in range(-self.maxh, self.maxh + 1):
                 rect_x = center_x + i * cell_size - cell_size // 2
@@ -219,38 +219,38 @@ class Clementine:
                 pygame.draw.rect(self.screen, (200, 200, 200), 
                                  (rect_x, rect_y, cell_size, cell_size), 1)
                 
-                # Marca o ponto ótimo
+                # Mark the optimal point
                 if i == 0 and j == 0:
                     pygame.draw.rect(self.screen, (0, 255, 0), 
                                      (rect_x, rect_y, cell_size, cell_size))
         
-        # Desenha o agente na posição atual
+        # Draw the agent at the current position
         agent_x = center_x + self.current_state[0] * cell_size - cell_size // 2
         agent_y = center_y + self.current_state[1] * cell_size - cell_size // 2
         pygame.draw.circle(self.screen, (255, 0, 0), 
                           (agent_x + cell_size // 2, agent_y + cell_size // 2), 
                           cell_size // 2)
         
-        # Atualiza a tela
+        # Update the display
         pygame.display.flip()
         self.clock.tick(30)
         pygame.event.pump()
 
 
 def plot_rewards(rewards):
-    """Plota a curva de recompensas do treinamento."""
+    """Plot the training rewards curve."""
     plt.figure(figsize=(10, 6))
     plt.plot(rewards)
-    plt.title('Recompensas por Episódio')
-    plt.xlabel('Episódio')
-    plt.ylabel('Recompensa Total')
+    plt.title('Rewards per Episode')
+    plt.xlabel('Episode')
+    plt.ylabel('Total Reward')
     plt.grid(True)
     
-    # Adiciona a média móvel
+    # Add moving average
     window_size = min(10, len(rewards))
     if window_size > 0:
         moving_avg = np.convolve(rewards, np.ones(window_size)/window_size, mode='valid')
-        plt.plot(range(window_size-1, len(rewards)), moving_avg, 'r', label=f'Média Móvel ({window_size} episódios)')
+        plt.plot(range(window_size-1, len(rewards)), moving_avg, 'r', label=f'Moving Average ({window_size} episodes)')
     
     plt.legend()
     plt.savefig('training_rewards.png')
@@ -258,38 +258,38 @@ def plot_rewards(rewards):
 
 
 def main():
-    """Função principal para treinamento e avaliação do agente Clementine."""
-    # Parâmetros
-    config_path = "config/config.yaml"  # Ajuste para o caminho correto do seu arquivo de configuração
-    drive_type = "base_drive"  # Tipo de drive a ser usado
-    render_mode = None  # Defina como "human" para visualizar o treinamento
-    num_episodes = 1000  # Número de episódios para treinamento
-    eval_episodes = 10  # Número de episódios para avaliação
+    """Main function for training and evaluating the Clementine agent."""
+    # Parameters
+    config_path = "config/config.yaml"  # Adjust to the correct path of your configuration file
+    drive_type = "brase_drive"  # Type of drive to use
+    render_mode = None  # Set to "human" to visualize training
+    num_episodes = 1000  # Number of episodes for training
+    eval_episodes = 10  # Number of episodes for evaluation
     
-    print("Iniciando ambiente Clementine...")
+    print("Initializing Clementine environment...")
     env = Clementine(config_path, drive_type, render_mode=render_mode)
     
-    print(f"\nIniciando treinamento por {num_episodes} episódios...")
+    print(f"\nStarting training for {num_episodes} episodes...")
     start_time = time.time()
     rewards = env.train(num_episodes)
     training_time = time.time() - start_time
-    print(f"Treinamento concluído em {training_time:.2f} segundos!")
+    print(f"Training completed in {training_time:.2f} seconds!")
     
-    # Plotar a curva de recompensas
+    # Plot the rewards curve
     plot_rewards(rewards)
     
-    # Avaliação com renderização
-    print(f"\nAvaliando o agente treinado por {eval_episodes} episódios...")
-    # Cria uma nova instância para avaliação com renderização
+    # Evaluation with rendering
+    print(f"\nEvaluating the trained agent for {eval_episodes} episodes...")
+    # Create a new instance for evaluation with rendering
     eval_env = Clementine(config_path, drive_type, render_mode="human")
-    # Copia a tabela Q do agente treinado
+    # Copy the Q-table from the trained agent
     eval_env.agent.q_table = env.agent.q_table.copy()
-    eval_env.agent.epsilon = 0.0  # Desativa a exploração durante a avaliação
+    eval_env.agent.epsilon = 0.0  # Disable exploration during evaluation
     
-    avg_reward = eval_env.evaluate(num_episodes=eval_episodes, render='human')
-    print(f"Avaliação concluída! Recompensa média: {avg_reward:.2f}")
+    avg_reward = eval_env.evaluate(num_episodes=eval_episodes, render=True)
+    print(f"Evaluation completed! Average reward: {avg_reward:.2f}")
     
-    # Fecha pygame se estiver ativo
+    # Close pygame if active
     if render_mode == "human" or eval_env.render_mode == "human":
         pygame.quit()
 
