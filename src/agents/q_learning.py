@@ -17,7 +17,7 @@ class QLearning:
         q_table (np.ndarray): Q-table to store Q-values for state-action pairs
     """
     
-    def __init__(self, env, state_size, action_size, learning_rate=0.1, discount_factor=0.99,
+    def __init__(self, state_size, action_size, env=None, learning_rate=0.1, discount_factor=0.99,
                  epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, n_bins = 20):
         """
         Initializes the Q-Learning agent.
@@ -39,7 +39,7 @@ class QLearning:
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
         self.n_bins = n_bins
-        self.size = env.size
+        self.size = env.size if env != None else state_size -1 
         # Initialize Q-table with zeros
         self.q_table = np.zeros((state_size, action_size))
         
