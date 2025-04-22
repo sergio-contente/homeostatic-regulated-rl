@@ -58,15 +58,13 @@ class QLearning:
         Returns:
             int: The selected action
         """
-        state_idx = self.env._get_state_index(state)
-        q_values = self.q_table[state_idx]
-        #print(f"[ACTION] Estado idx: {state_idx}, Q-values: {q_values}")
+        q_values = self.q_table[state]
         return epsilon_greedy_policy(q_values, self.epsilon)
     
     def update_q_table(self, state, action, reward, next_state, done):
         # Checked - it's correct
-        state_idx = self.env._get_state_index(state)
-        next_state_idx = self.env._get_state_index(next_state)
+        state_idx = self._process_state(state)
+        next_state_idx = self._process_state(next_state)
 
         self.q_table[state_idx, action] += self.learning_rate * (reward + self.discount_factor * np.max(self.q_table[next_state_idx, :]) - self.q_table[state_idx, action])
 
@@ -121,6 +119,7 @@ class QLearning:
         
         for episode in range(num_episodes):
             state, _ = env.reset()  # Compatible with Gymnasium
+            state = self._process_state(state)  # Convert state to index if necessary
             
             total_reward = 0
             done = False
@@ -131,7 +130,9 @@ class QLearning:
                 action = self.get_action(state)
                 
                 # Execute the action in the environment
-                next_state, reward, done, truncated, _ = env.step(action)  # Compatible with Gymnasium                
+                next_state, reward, done, truncated, _ = env.step(action)  # Compatible with Gymnasium
+                next_state = self._process_state(next_state)  # Convert state to index if necessary
+                
                 # Update the Q-table
                 self.update_q_table(state, action, reward, next_state, done)
                 
@@ -155,6 +156,48 @@ class QLearning:
                 print(f"Episode: {episode + 1}/{num_episodes}, Average Reward: {avg_reward:.2f}, Epsilon: {self.epsilon:.4f}")
         
         return rewards_per_episode
+    
+    # def _process_state(self, state):
+    #     # In theory that's ok
+    #     """Processa o estado para uso na tabela Q."""
+    #     # Dictionary to value step
+    #     if isinstance(state, dict) and "internal_states" in state:
+    #         state = state["internal_states"]
+
+    #     # Numpy array to value step -> with discretizing 
+    #     if isinstance(state, np.ndarray):
+    #         print("ENTROU AQUI NO DISCRETIZATION")
+    #         # Value between 0 and n_bins - 1
+    #         discrete_state = []
+    #         for i, val in enumerate(state):
+    #             # Normalizing the value to the interval [0, n_bins - 1]
+    #             bin_idx = int(val * (self.n_bins / self.size))
+    #             bin_idx = max(0, min(self.n_bins - 1, bin_idx))  # Clip for limits assurance
+    #             discrete_state.append(bin_idx)
+                
+    #         # Convert the multidimensional state to a unique index
+    #         return np.ravel_multi_index(tuple(discrete_state), dims=[self.n_bins] * len(state))
+            
+    #     if isinstance(state, (int, np.integer)):
+    #         # If it's already treated
+    #         return state
+            
+    #     raise ValueError(f"Not supported state format: {type(state)}")
+
+    def _process_state(self, state):
+        if isinstance(state, dict) and "internal_states" in state:
+            state = state["internal_states"]
+
+        if isinstance(state, np.ndarray):
+            # Converte valores de [-maxh, maxh] para [0, 2*maxh]
+            offset_state = state + self.maxh
+            return np.ravel_multi_index(tuple(offset_state), dims=[2 * self.maxh + 1] * len(state))
+
+        if isinstance(state, (int, np.integer)):
+            return state
+
+        raise ValueError(f"Unsupported state format: {type(state)}")
+
 
 
     def evaluate(self, env, num_episodes=10, render=False):
@@ -173,7 +216,7 @@ class QLearning:
         
         for episode in range(num_episodes):
             state, _ = env.reset()
-            state_idx = env._get_state_index(state)
+            state = self._process_state(state)
             
             episode_reward = 0
             done = False
@@ -181,17 +224,17 @@ class QLearning:
             
             while not (done or truncated):
                 # Always choose the best action during evaluation (epsilon = 0)
-                action = np.argmax(self.q_table[state_idx])
+                action = np.argmax(self.q_table[state])
                 
                 # Execute the action in the environment
                 next_state, reward, done, truncated, _ = env.step(action)
+                next_state = self._process_state(next_state)
                 
                 if render:
                     env.render()
                 
                 # Update the state and reward
                 state = next_state
-                state_idx = env._get_state_index(state)
                 episode_reward += reward
             
             total_rewards.append(episode_reward)

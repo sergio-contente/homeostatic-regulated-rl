@@ -1,5 +1,5 @@
 import numpy as np
-from src.gymnasium_env.envs.discrete_homeoenv import DiscreteHomeoEnv
+from src.gymnasium_env.envs.discrete_homeoenv import HomeoEnv
 from src.gymnasium_env.envs.wrappers.digitize_continuos import DiscretizeWrapper
 
 from ...agents.q_learning import QLearning
@@ -10,8 +10,8 @@ def main():
 
     # === Create base environment ===
     config_path = "config/config.yaml"
-    drive_type = "base_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
-    env = DiscreteHomeoEnv(config_path=config_path, drive_type=drive_type, render_mode=None, maxh=maxh)
+    drive_type = "interoceptive_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
+    env = HomeoEnv(config_path=config_path, drive_type=drive_type, render_mode=None, maxh=maxh)
 
     # === Wrap with discretization ===
     #wrapped_env = DiscretizeWrapper(env, n_bins=n_bins, low=low, high=high)
@@ -38,10 +38,10 @@ def main():
     num_episodes = 1000
     rewards = agent.train(env, num_episodes=num_episodes)
     
-    agent.save_q_table("models/gym_env/discrete_homeoenv")
+    agent.save_q_table("models/gym_env/homeoenv")
 
     # Continua com a avaliação
-    env_eval = DiscreteHomeoEnv(config_path=config_path, drive_type=drive_type, render_mode='human')
+    env_eval = HomeoEnv(config_path=config_path, drive_type=drive_type, render_mode='human')
     agent.evaluate(env_eval, num_episodes=10, render=True)
 
     env.plot_rewards(rewards)

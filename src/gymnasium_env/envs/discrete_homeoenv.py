@@ -6,7 +6,7 @@ import numpy as np
 from ...utils.get_params import ParameterHandler
 
 
-class DiscreteHomeoEnv(gym.Env):
+class HomeoEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
     def __init__(self, config_path, drive_type, render_mode=None, maxh=10):
@@ -24,7 +24,7 @@ class DiscreteHomeoEnv(gym.Env):
 
         # Observations are dictionaries with the agent's internal states only
         self.size = maxh
-        self.observation_space = spaces.Box(0, self.size + 1, shape=(self._internal_state_size,), dtype=np.int32)
+        self.observation_space = spaces.Box(-self.size, self.size + 1, shape=(self._internal_state_size,), dtype=np.int32)
 
         # Define action space for homeostatic regulation
         self.action_space = spaces.Discrete(5)
@@ -97,9 +97,9 @@ class DiscreteHomeoEnv(gym.Env):
         elif action == 1:  # Consume resource 1
             self._internal_states[1] = min(self._internal_states[1] + self._outcome, self.size)
         elif action == 2: # Do not consume resource 0
-            self._internal_states[0] = max(self._internal_states[0] - self._outcome, 0)
+            self._internal_states[0] = max(self._internal_states[0] - self._outcome, -self.size)
         elif action == 3: # Do not consume resouce 1
-            self._internal_states[1] = max(self._internal_states[1] - self._outcome, 0)
+            self._internal_states[1] = max(self._internal_states[1] - self._outcome, -self.size)
 
         # Updates drive and reward
         new_drive = self.drive.compute_drive(self._internal_states)
@@ -126,24 +126,6 @@ class DiscreteHomeoEnv(gym.Env):
             self._render_frame()
 
         return observation, reward, terminated, False, info
-    
-    def _get_state_index(self, state):
-        """
-        Converts a 2D non-negative state into a unique index assuming each variable ∈ [0, size].
-        """
-        if isinstance(state, np.ndarray):
-            state = tuple(state.astype(int))
-        else:
-            state = tuple(state)
-
-        # Ensure the state is within bounds
-        if any(s < 0 or s > self.size for s in state):
-            raise ValueError(f"[ERROR] Invalid state: {state}. Out of bounds for [0, {self.size}].")
-
-        # Map (x, y) to index in row-major order
-        return state[0] * (self.size + 1) + state[1]
-
-
 
     def render(self):
         if self.render_mode == "rgb_array":
@@ -156,7 +138,7 @@ class DiscreteHomeoEnv(gym.Env):
             self.screen_width = 600
             self.screen_height = 600
             self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-            pygame.display.set_caption("Discrete Homeostatic Environment")
+            pygame.display.set_caption("Clementine Environment")
             self.clock = pygame.time.Clock()
             
         # Clear the screen
@@ -198,7 +180,7 @@ class DiscreteHomeoEnv(gym.Env):
         import matplotlib.pyplot as plt
 
         # Garante que a pasta 'images/custom/homeoenv' exista
-        os.makedirs('images/gym/discrete_homeoenv', exist_ok=True)
+        os.makedirs('images/gym/homeoenv', exist_ok=True)
 
         plt.figure(figsize=(10, 6))
         plt.plot(rewards)
@@ -214,6 +196,6 @@ class DiscreteHomeoEnv(gym.Env):
             plt.plot(range(window_size-1, len(rewards)), moving_avg, 'r', label=f'Moving Average ({window_size} episodes)')
         
         plt.legend()
-        plt.savefig('images/gym/discrete_homeoenv/training_rewards.png')
+        plt.savefig('images/gym/homeoenv/training_rewards.png')
         plt.show()
 
