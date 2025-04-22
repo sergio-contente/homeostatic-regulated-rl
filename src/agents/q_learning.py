@@ -20,7 +20,7 @@ class QLearning:
     """
     
     def __init__(self, state_size, action_size, env=None, learning_rate=0.1, discount_factor=0.99,
-                 epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, n_bins = 20):
+                 epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, n_bins = 20, maxh=5):
         """
         Initializes the Q-Learning agent.
         
@@ -45,6 +45,7 @@ class QLearning:
         self.env = None if env == None else env
         # Initialize Q-table with zeros
         self.q_table = np.zeros((state_size, action_size))
+        self.maxh = 5
         
     def get_action(self, state):
         # Checked - it's correct
@@ -84,7 +85,7 @@ class QLearning:
         Args:
             filepath (str): Path to save the file
         """
-        os.makedirs(filepath, exist_ok=True)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
         model_filename = filepath + ".pkl"
 
@@ -156,31 +157,46 @@ class QLearning:
         
         return rewards_per_episode
     
+    # def _process_state(self, state):
+    #     # In theory that's ok
+    #     """Processa o estado para uso na tabela Q."""
+    #     # Dictionary to value step
+    #     if isinstance(state, dict) and "internal_states" in state:
+    #         state = state["internal_states"]
+
+    #     # Numpy array to value step -> with discretizing 
+    #     if isinstance(state, np.ndarray):
+    #         print("ENTROU AQUI NO DISCRETIZATION")
+    #         # Value between 0 and n_bins - 1
+    #         discrete_state = []
+    #         for i, val in enumerate(state):
+    #             # Normalizing the value to the interval [0, n_bins - 1]
+    #             bin_idx = int(val * (self.n_bins / self.size))
+    #             bin_idx = max(0, min(self.n_bins - 1, bin_idx))  # Clip for limits assurance
+    #             discrete_state.append(bin_idx)
+                
+    #         # Convert the multidimensional state to a unique index
+    #         return np.ravel_multi_index(tuple(discrete_state), dims=[self.n_bins] * len(state))
+            
+    #     if isinstance(state, (int, np.integer)):
+    #         # If it's already treated
+    #         return state
+            
+    #     raise ValueError(f"Not supported state format: {type(state)}")
+
     def _process_state(self, state):
-        # In theory that's ok
-        """Processa o estado para uso na tabela Q."""
-        # Dictionary to value step
         if isinstance(state, dict) and "internal_states" in state:
             state = state["internal_states"]
 
-        # Numpy array to value step -> with discretizing 
         if isinstance(state, np.ndarray):
-            # Value between 0 and n_bins - 1
-            discrete_state = []
-            for i, val in enumerate(state):
-                # Normalizing the value to the interval [0, n_bins - 1]
-                bin_idx = int(val * (self.n_bins / self.size))
-                bin_idx = max(0, min(self.n_bins - 1, bin_idx))  # Clip for limits assurance
-                discrete_state.append(bin_idx)
-                
-            # Convert the multidimensional state to a unique index
-            return np.ravel_multi_index(tuple(discrete_state), dims=[self.n_bins] * len(state))
-            
+            # Converte valores de [-maxh, maxh] para [0, 2*maxh]
+            offset_state = state + self.maxh
+            return np.ravel_multi_index(tuple(offset_state), dims=[2 * self.maxh + 1] * len(state))
+
         if isinstance(state, (int, np.integer)):
-            # If it's already treated
             return state
-            
-        raise ValueError(f"Not supported state format: {type(state)}")
+
+        raise ValueError(f"Unsupported state format: {type(state)}")
 
 
 
