@@ -1,5 +1,7 @@
-import torch
 import numpy as np
+import pickle
+import os
+
 from ..utils.e_greedy import epsilon_greedy_policy
 
 class QLearning:
@@ -40,10 +42,12 @@ class QLearning:
         self.epsilon_decay = epsilon_decay
         self.n_bins = n_bins
         self.size = env.size if env != None else state_size -1 
+        self.env = None if env == None else env
         # Initialize Q-table with zeros
         self.q_table = np.zeros((state_size, action_size))
         
     def get_action(self, state):
+        # Checked - it's correct
         """
         Selects an action using epsilon-greedy policy.
         
@@ -57,7 +61,7 @@ class QLearning:
         return epsilon_greedy_policy(q_values, self.epsilon)
     
     def update_q_table(self, state, action, reward, next_state, done):
-        # Converte os estados para índices
+        # Checked - it's correct
         state_idx = self._process_state(state)
         next_state_idx = self._process_state(next_state)
 
@@ -66,6 +70,7 @@ class QLearning:
         
     
     def decay_epsilon(self):
+        # Checkec -> correct
         """
         Reduces the value of epsilon to balance exploration and exploitation.
         """
@@ -79,16 +84,23 @@ class QLearning:
         Args:
             filepath (str): Path to save the file
         """
-        np.save(filepath, self.q_table)
+        os.makedirs(filepath, exist_ok=True)
+
+        model_filename = filepath + ".pkl"
+
+        with open(model_filename, 'wb') as f:
+            pickle.dump(self.q_table, f)
+
+        print(f"Model saved in: {model_filename}")
+
         
     def load_q_table(self, filepath):
         """
-        Loads the Q-table from a file.
-        
-        Args:
-            filepath (str): Path of the file to be loaded
+        Loads the Q-table from a file using pickle.
         """
-        self.q_table = np.load(filepath)
+        with open(filepath, 'rb') as f:
+            self.q_table = pickle.load(f)
+
         
     def train(self, env, num_episodes, max_steps_per_episode=1000):
         """
@@ -145,28 +157,30 @@ class QLearning:
         return rewards_per_episode
     
     def _process_state(self, state):
+        # In theory that's ok
         """Processa o estado para uso na tabela Q."""
-        # Se for dict vindo do ambiente original
+        # Dictionary to value step
         if isinstance(state, dict) and "internal_states" in state:
             state = state["internal_states"]
-        
+
+        # Numpy array to value step -> with discretizing 
         if isinstance(state, np.ndarray):
-            # Discretiza cada valor do array para um valor entre 0 e n_bins-1
+            # Value between 0 and n_bins - 1
             discrete_state = []
             for i, val in enumerate(state):
-                # Normaliza o valor para o intervalo [0, n_bins-1]
+                # Normalizing the value to the interval [0, n_bins - 1]
                 bin_idx = int(val * (self.n_bins / self.size))
-                bin_idx = max(0, min(self.n_bins - 1, bin_idx))  # Clip para garantir limites
+                bin_idx = max(0, min(self.n_bins - 1, bin_idx))  # Clip for limits assurance
                 discrete_state.append(bin_idx)
                 
-            # Converte o estado multi-dimensional para um índice único
+            # Convert the multidimensional state to a unique index
             return np.ravel_multi_index(tuple(discrete_state), dims=[self.n_bins] * len(state))
             
         if isinstance(state, (int, np.integer)):
-            # Se já for um índice, retorna direto
+            # If it's already treated
             return state
             
-        raise ValueError(f"Formato de estado não suportado: {type(state)}")
+        raise ValueError(f"Not supported state format: {type(state)}")
 
 
 

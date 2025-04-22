@@ -148,23 +148,6 @@ agent = QLearning(
 num_episodes = 500
 rewards = agent.train(env, num_episodes=num_episodes)
 
-import pickle
-import os
-
-# Criar diretório de modelos se não existir
-os.makedirs("models", exist_ok=True)
-
-# Obter os parâmetros do drive para identificar o modelo
-n_param = getattr(env.drive, 'n', 1)
-m_param = getattr(env.drive, 'm', 1)
-
-# Salvar o modelo com nome específico incluindo os parâmetros
-model_filename = f"models/qlearning_model_{drive_type}_n{n_param}_m{m_param}.pkl"
-with open(model_filename, 'wb') as f:
-    pickle.dump(agent.q_table, f)
-    
-print(f"Modelo salvo em: {model_filename}")
-
 # Continua com a avaliação
 env_eval = ClementineEnvironment(config_path=config_path, drive_type=drive_type, render_mode='human')
 #evaluate_agent(agent, env_eval, rewards, internal_state_dim=2)

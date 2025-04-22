@@ -10,13 +10,12 @@ def greedy_policy(qvalues):
 def epsilon_greedy_policy(qvalues, epsilon):
 	# Randomly generate a number between 0 and 1
 	random_num = random.uniform(0,1)
-	# if random_num > greater than epsilon -> exploitation
-	if random_num > epsilon:
+	# if random_num <  epsilon -> Exploration
+	if random_num < epsilon:
+		action = np.random.choice(len(qvalues))
+	else: # Exploitation
 		# Take th action with the highest value given a state
 		action = greedy_policy(qvalues)
-	else: # Exploration
-		action = np.random.choice(len(qvalues))
-
 	return action
 
 	
