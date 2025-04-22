@@ -6,7 +6,7 @@ import numpy as np
 from ...utils.get_params import ParameterHandler
 
 
-class HomeoEnv(gym.Env):
+class DiscreteHomeoEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
     def __init__(self, config_path, drive_type, render_mode=None, maxh=10):
