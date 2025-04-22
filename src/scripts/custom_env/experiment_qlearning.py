@@ -8,7 +8,7 @@ def main():
 
     # === Create base environment ===
     config_path = "config/config.yaml"
-    drive_type = "interoceptive_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
+    drive_type = "base_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
     env = HomeoEnv(config_path=config_path, drive_type=drive_type, render_mode=None, maxh=maxh)
 
     # === Calculate number of states and actions ===
@@ -22,10 +22,10 @@ def main():
         env=env,
         state_size=state_size,
         action_size=action_size,
-        learning_rate=0.1,
-        discount_factor=0.99,
+        learning_rate=0.4,
+        discount_factor=0.5,
         epsilon=1.0,
-        epsilon_min=0.01,
+        epsilon_min=0.4,
         epsilon_decay=0.995
     )
 
