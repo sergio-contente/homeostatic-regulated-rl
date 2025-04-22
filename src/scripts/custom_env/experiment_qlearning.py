@@ -1,5 +1,5 @@
 import numpy as np
-from src.custom_env.clementine import Clementine
+from src.custom_env.homeoenv import HomeoEnv
 from ...agents.q_learning import QLearning
 
 def main():
@@ -8,8 +8,8 @@ def main():
 
     # === Create base environment ===
     config_path = "config/config.yaml"
-    drive_type = "elliptic_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
-    env = Clementine(config_path=config_path, drive_type=drive_type, render_mode=None, maxh=maxh)
+    drive_type = "interoceptive_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
+    env = HomeoEnv(config_path=config_path, drive_type=drive_type, render_mode=None, maxh=maxh)
 
     # === Calculate number of states and actions ===
     size = env.drive.get_internal_state_size()
@@ -30,13 +30,13 @@ def main():
     )
 
     # === Train the agent ===
-    num_episodes = 500
+    num_episodes = 1000
     rewards = agent.train(env, num_episodes=num_episodes)
     
-    agent.save_q_table("models/clementine/custom")
+    agent.save_q_table("models/custom/homeoenv")
 
     # Continua com a avaliação
-    env_eval = Clementine(config_path=config_path, drive_type=drive_type, render_mode='human')
+    env_eval = HomeoEnv(config_path=config_path, drive_type=drive_type, render_mode='human')
     agent.evaluate(env_eval, num_episodes=10, render=True)
 
     env.plot_rewards(rewards)

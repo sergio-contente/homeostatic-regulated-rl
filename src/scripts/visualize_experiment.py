@@ -47,7 +47,7 @@ def plot_policy_quiver(policy_matrix, state_range=(-200, 200)):
 
 # === Parâmetros ===
 max_val = 300.0
-model_path = "models/qlearning_model_base_drive_n1_m1.pkl"  # Ajuste o caminho conforme necessário
+model_path = "models/clementine/qlearning_model_base_drive_n1_m1.pkl"  # Ajuste o caminho conforme necessário
 output_dir = "./visualizacoes"
 
 # === Carregar e visualizar modelo ===

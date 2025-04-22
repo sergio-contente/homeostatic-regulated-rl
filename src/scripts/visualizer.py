@@ -771,7 +771,7 @@ def load_and_visualize_qlearning_model(model_path, output_dir='./', env=None, ma
 
 # Exemplo de uso
 if __name__ == "__main__":
-    model_path = "model/qlearning_model_base_drive_n1_m1.pkl"
+    model_path = "model/clementine/qlearning_model_base_drive_n1_m1.pkl"
     output_dir = "./"
     
     # Carregar e visualizar o modelo

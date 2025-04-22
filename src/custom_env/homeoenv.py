@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
-class Clementine:
+class HomeoEnv:
     def __init__(self, config_path, drive_type, render_mode=None, maxh=5):
         self.state_space = [(i, j) for i in range(maxh + 1) for j in range(maxh + 1)]
         self.action_space = [0, 1, 2, 3, 4]
@@ -124,6 +124,11 @@ class Clementine:
 
     def plot_rewards(self, rewards):
         """Plot the training rewards curve."""
+        import os
+
+        # Garante que a pasta 'images/custom/homeoenv' exista
+        os.makedirs('images/custom/homeoenv', exist_ok=True)
+
         plt.figure(figsize=(10, 6))
         plt.plot(rewards)
         plt.title('Rewards per Episode')
@@ -138,5 +143,5 @@ class Clementine:
             plt.plot(range(window_size-1, len(rewards)), moving_avg, 'r', label=f'Moving Average ({window_size} episodes)')
         
         plt.legend()
-        plt.savefig('training_rewards.png')
+        plt.savefig('images/custom/homeoenv/training_rewards.png')
         plt.show()
