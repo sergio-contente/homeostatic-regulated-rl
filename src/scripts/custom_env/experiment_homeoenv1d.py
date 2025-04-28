@@ -1,5 +1,5 @@
 import numpy as np
-from src.custom_env.homeoenv import HomeoEnv
+from src.custom_env.one_dimensional import HomeoEnv1D
 from ...agents.q_learning import QLearning
 
 def main():
@@ -8,8 +8,8 @@ def main():
 
     # === Create base environment ===
     config_path = "config/config.yaml"
-    drive_type = "interoceptive_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
-    env = HomeoEnv(config_path=config_path, drive_type=drive_type, render_mode=None, maxh=maxh)
+    drive_type = "base_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
+    env = HomeoEnv1D(config_path=config_path, drive_type=drive_type, render_mode=None, maxh=maxh)
 
     # === Calculate number of states and actions ===
     size = env.drive.get_internal_state_size()
@@ -33,10 +33,10 @@ def main():
     num_episodes = 500
     rewards = agent.train(env, num_episodes=num_episodes)
     
-    agent.save_q_table("models/custom/homeoenv")
+    agent.save_q_table("models/custom/HomeoEnv1D")
     env.plot_rewards(rewards)
 
-    env_eval = HomeoEnv(config_path=config_path, drive_type=drive_type, render_mode='human')
+    env_eval = HomeoEnv1D(config_path=config_path, drive_type=drive_type, render_mode='human')
     agent.evaluate(env_eval, num_episodes=10, render=True)
 
 

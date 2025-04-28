@@ -156,33 +156,6 @@ class QLearning:
                 print(f"Episode: {episode + 1}/{num_episodes}, Average Reward: {avg_reward:.2f}, Epsilon: {self.epsilon:.4f}")
         
         return rewards_per_episode
-    
-    # def _process_state(self, state):
-    #     # In theory that's ok
-    #     """Processa o estado para uso na tabela Q."""
-    #     # Dictionary to value step
-    #     if isinstance(state, dict) and "internal_states" in state:
-    #         state = state["internal_states"]
-
-    #     # Numpy array to value step -> with discretizing 
-    #     if isinstance(state, np.ndarray):
-    #         print("ENTROU AQUI NO DISCRETIZATION")
-    #         # Value between 0 and n_bins - 1
-    #         discrete_state = []
-    #         for i, val in enumerate(state):
-    #             # Normalizing the value to the interval [0, n_bins - 1]
-    #             bin_idx = int(val * (self.n_bins / self.size))
-    #             bin_idx = max(0, min(self.n_bins - 1, bin_idx))  # Clip for limits assurance
-    #             discrete_state.append(bin_idx)
-                
-    #         # Convert the multidimensional state to a unique index
-    #         return np.ravel_multi_index(tuple(discrete_state), dims=[self.n_bins] * len(state))
-            
-    #     if isinstance(state, (int, np.integer)):
-    #         # If it's already treated
-    #         return state
-            
-    #     raise ValueError(f"Not supported state format: {type(state)}")
 
     def _process_state(self, state):
         if isinstance(state, dict) and "internal_states" in state:

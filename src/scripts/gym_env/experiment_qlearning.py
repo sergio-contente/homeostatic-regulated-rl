@@ -10,7 +10,7 @@ def main():
 
     # === Create base environment ===
     config_path = "config/config.yaml"
-    drive_type = "interoceptive_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
+    drive_type = "elliptic_drive"  # "base_drive", "elliptic_drive", "interoceptive_drive"
     env = HomeoEnv(config_path=config_path, drive_type=drive_type, render_mode=None, maxh=maxh)
 
     # === Wrap with discretization ===
@@ -35,16 +35,15 @@ def main():
     )
 
     # === Train the agent ===
-    num_episodes = 1000
+    num_episodes = 500
     rewards = agent.train(env, num_episodes=num_episodes)
     
     agent.save_q_table("models/gym_env/homeoenv")
-
-    # Continua com a avaliação
-    env_eval = HomeoEnv(config_path=config_path, drive_type=drive_type, render_mode='human')
-    agent.evaluate(env_eval, num_episodes=10, render=True)
-
     env.plot_rewards(rewards)
+
+    env_eval = HomeoEnv(config_path=config_path, drive_type=drive_type, render_mode='human')
+    #agent.evaluate(env_eval, num_episodes=10, render=True)
+
 
 if __name__ == "__main__":
     main()
