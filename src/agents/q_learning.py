@@ -157,21 +157,41 @@ class QLearning:
         
         return rewards_per_episode
 
+    # def _process_state(self, state):
+    #     if isinstance(state, dict) and "internal_states" in state:
+    #         state = state["internal_states"]
+
+    #     if isinstance(state, np.ndarray):
+    #         # Converte valores de [-maxh, maxh] para [0, 2*maxh]
+    #         offset_state = state + self.maxh
+    #         return np.ravel_multi_index(tuple(offset_state), dims=[2 * self.maxh + 1] * len(state))
+
+    #     if isinstance(state, (int, np.integer)):
+    #         return state
+
+    #     raise ValueError(f"Unsupported state format: {type(state)}")
+    
     def _process_state(self, state):
         if isinstance(state, dict) and "internal_states" in state:
             state = state["internal_states"]
 
         if isinstance(state, np.ndarray):
+            # Garante que os estados estão dentro dos limites
+            state = np.clip(state, -self.maxh, self.maxh)
+            
             # Converte valores de [-maxh, maxh] para [0, 2*maxh]
             offset_state = state + self.maxh
-            return np.ravel_multi_index(tuple(offset_state), dims=[2 * self.maxh + 1] * len(state))
+            
+            # Converte para inteiros
+            offset_state = np.round(offset_state).astype(int)
+            dims = [2 * self.maxh + 1] * len(state)
+        
+        return np.ravel_multi_index(tuple(offset_state), dims=dims)
 
         if isinstance(state, (int, np.integer)):
             return state
 
         raise ValueError(f"Unsupported state format: {type(state)}")
-
-
 
     def evaluate(self, env, num_episodes=10, render=False):
         """
