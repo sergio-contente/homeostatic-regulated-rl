@@ -14,7 +14,7 @@ class HomeoEnv1D:
         self.render_mode = render_mode
         self.enable_visualization = enable_visualization
 
-        self._outcome = 5
+        self._outcome = 7
 
         self.param_manager = ParameterHandler(config_path)
         self.drive = self.param_manager.create_drive(drive_type)
@@ -23,7 +23,13 @@ class HomeoEnv1D:
         self.optimal_point = tuple(tensor.tolist())
 
         self.size = self.drive.get_internal_state_size()
-        self.current_state = np.zeros(self.size, dtype=np.float32)
+        # Gera um estado aleatório diferente do ótimo
+        while True:
+            random_state = np.random.uniform(-self.maxh, self.maxh, self.size).astype(np.float32)
+            if not np.allclose(random_state, self.optimal_point, atol=0.1):
+                break
+
+        self.current_state = random_state
         initial_drive = self.drive.compute_drive(self.current_state)
         self.drive.update_drive(initial_drive)
 
@@ -35,8 +41,8 @@ class HomeoEnv1D:
         self.learning_rate = 0.5
         self.gamma = 0.99
         self.epsilon = 1.0
-        self.epsilon_min = 0.001
-        self.epsilon_decay = 0.999
+        self.epsilon_min = 0.05
+        self.epsilon_decay = 0.995
 
         # Históricos para visualização
         self.history = {"states": [], "drive": [], "reward": [], "position": []}
@@ -66,7 +72,13 @@ class HomeoEnv1D:
         return tuple(discretized)
 
     def reset(self):
-        self.current_state = np.zeros(self.size, dtype=np.float32)
+        # Gera um estado aleatório diferente do ótimo
+        while True:
+            random_state = np.random.uniform(-self.maxh, self.maxh, self.size).astype(np.float32)
+            if not np.allclose(random_state, self.optimal_point, atol=0.1):
+                break
+
+        self.current_state = random_state
         initial_drive = self.drive.compute_drive(self.current_state)
         self.drive.update_drive(initial_drive)
         self.agent_position = 0
@@ -174,6 +186,7 @@ class HomeoEnv1D:
                 self.current_reward = total_reward
                 
                 # Verificação de término
+                done = False
                 if done or truncated:
                     break
 
@@ -825,6 +838,8 @@ class HomeoEnv1D:
                 
                 # Define a direção do vetor baseada na ação
                 dx, dy = action_vectors[best_action]
+                if dx == 0 and dy == 0:
+                    dx, dy = (0.1, 0.1)  # só para não ficar invisível no gráfico
                 U[i, j] = dx
                 V[i, j] = dy
                 
@@ -903,6 +918,7 @@ class HomeoEnv1D:
             state_idx = next_state_idx
             
             # Verifica se terminou
+            done = False
             if done or truncated:
                 break
         

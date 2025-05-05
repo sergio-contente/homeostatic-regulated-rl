@@ -29,7 +29,7 @@ def main():
     drive_type = "base_drive"
     q_table_path = "models/custom/HomeoEnv1D/q_table.npy"
     num_eval_episodes = 5
-    max_steps_per_episode = 1000
+    max_steps_per_episode = 300
     save_gif_path = "images/custom/homeoenv/evaluation.gif"
     
     # Configuração para visualização
@@ -129,6 +129,7 @@ def main():
                 time.sleep(delay_between_steps)
             
             # Verificar condição de término
+            done = False
             if done:
                 print(f"  Episódio terminado com sucesso após {step+1} passos!")
                 break
