@@ -84,6 +84,22 @@ class HomeoEnv1D:
         self.agent_position = 0
         self.steps = 0
         return self.current_state, {}
+    
+    def compute_action_mask(self):
+        """
+        Returns a boolean mask of valid actions.
+        True means the action is valid.
+        """
+        mask = np.ones(len(self.action_space), dtype=np.bool)
+
+        # Check if the agent is on a resource position
+        if self.agent_position not in self.resources_position:
+            # Mask out 'consume resource' (action 3)
+            mask[3] = 0
+            mask[4] = 0 
+
+        return mask
+    
 
     def step(self, action):
         if action == 1:
@@ -113,8 +129,8 @@ class HomeoEnv1D:
         threshold = self._outcome / 2
         terminated = self.drive.has_reached_optimal(self.current_state, threshold)
 
-        if terminated:
-            print("Optimal state reached!")
+        # if terminated:
+        #     print("Optimal state reached!")
 
         observation = self.current_state
 
@@ -128,7 +144,7 @@ class HomeoEnv1D:
         self.steps += 1
         truncated = self.steps >= 1000
 
-        return observation, reward, terminated, truncated, {}
+        return observation, reward, terminated, truncated, {"action_mask": self.compute_action_mask()}
 
     # def select_action(self, state_idx, temperature=1.0):
     #     q_values = self.q_table[state_idx]
@@ -136,13 +152,26 @@ class HomeoEnv1D:
     #     exp_q = np.exp(q_values / max(temperature, 1e-6))
     #     probabilities = exp_q / np.sum(exp_q)
     #     return np.random.choice(self.action_space, p=probabilities)
-    def select_action(self, state_idx, epsilon=0.1):
-    # With probability epsilon, choose a random action for exploration
+    def select_action(self, state_idx, epsilon=0.1, mask=None):
+        """
+        Selects an action using epsilon-greedy with optional action mask.
+        """
+        if mask is None:
+            mask = np.ones(len(self.action_space), dtype=np.bool)
+
+        valid_actions = np.where(mask)[0]
+
         if np.random.random() < epsilon:
-            return np.random.choice(self.action_space)
-        # Otherwise, choose the best action (exploitation)
+            # Explore only from valid actions
+            return np.random.choice(valid_actions)
         else:
-            return np.argmax(self.q_table[state_idx])
+            # Exploit: choose the best valid action
+            q_values = self.q_table[state_idx]
+            # Mask invalid actions by setting them to -inf
+            masked_q_values = np.full_like(q_values, -np.inf)
+            masked_q_values[mask] = q_values[mask]
+            return np.argmax(masked_q_values)
+
 
     def update_q_table(self, state_idx, action, reward, next_state_idx):
         q_predict = self.q_table[state_idx][action]
@@ -171,7 +200,8 @@ class HomeoEnv1D:
                             return rewards_per_episode  # Retorna os resultados parciais
                 
                 # Seleciona e executa a ação
-                action = self.select_action(state_idx, self.epsilon)
+                mask = self.compute_action_mask()
+                action = self.select_action(state_idx, self.epsilon, mask)
                 next_state, reward, done, truncated, _ = self.step(action)
                 next_state_idx = self.discretize_state(next_state)
 
@@ -900,6 +930,7 @@ class HomeoEnv1D:
         # Coleta dados para num_steps ou até terminar
         for step in range(num_steps):
             # Seleciona a melhor ação de acordo com a Q-table
+            mask = self.compute_action_mask()
             action = np.argmax(self.q_table[state_idx])
             
             # Executa a ação
