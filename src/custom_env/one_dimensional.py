@@ -15,6 +15,8 @@ class HomeoEnv1D:
         self.enable_visualization = enable_visualization
 
         self._outcome = 7
+        self.consumption_counts = {0: 0, 1: 0}
+
 
         self.param_manager = ParameterHandler(config_path)
         self.drive = self.param_manager.create_drive(drive_type)
@@ -117,10 +119,11 @@ class HomeoEnv1D:
             self.current_state[resource_index] = min(
                 self.current_state[resource_index] + self._outcome, self.maxh
             )
+            self.consumption_counts[resource_index] += 1
 
-        decay_rate = 0.1
+        decay = 0.1
         for i in range(len(self.current_state)):
-            self.current_state[i] = max(self.current_state[i] - decay_rate, -self.maxh)
+            self.current_state[i] = max(self.current_state[i] - decay, -self.maxh)
 
         new_drive = self.drive.compute_drive(self.current_state)
         reward = self.drive.compute_reward(new_drive)
@@ -180,6 +183,7 @@ class HomeoEnv1D:
 
     def train(self, num_episodes=500, max_steps_per_episode=1000):
         rewards_per_episode = []
+        self.consumption_counts = {0: 0, 1: 0}
 
         for episode in range(num_episodes):
             state, _ = self.reset()
@@ -229,6 +233,9 @@ class HomeoEnv1D:
             # Log de progresso
             if (episode + 1) % 10 == 0:
                 print(f"Episode {episode+1}/{num_episodes} | Total Reward: {total_reward:.2f} | Epsilon: {self.epsilon:.4f}")
+            
+        print(f"Total de consumos - Recurso 0: {self.consumption_counts[0]}, Recurso 1: {self.consumption_counts[1]}")
+
 
         return rewards_per_episode
 
@@ -564,31 +571,34 @@ class HomeoEnv1D:
 
     def _plot_internal_state_trajectory(self, ax):
         """
-        Plota a trajetória dos estados internos durante um episódio de avaliação.
-        Semelhante ao Gráfico a na imagem de referência.
+        Plota a trajetória dos estados internos durante um episódio de avaliação,
+        mostrando cada estado interno separadamente.
         """
         # Roda um episódio para coletar dados da trajetória
         trajectory = self._collect_trajectory_data()
-        
-        # Calcula a média dos dois estados internos para simplificar a visualização
-        avg_state = [(s[0] + s[1])/2 for s in trajectory['states']]
-        
-        # Plota a linha da trajetória de estado interno médio
-        ax.plot(range(len(avg_state)), avg_state, 'k-', linewidth=1.5)
-        
-        # Adiciona linhas horizontais de referência
+
+        states_0 = [s[0] for s in trajectory['states']]
+        states_1 = [s[1] for s in trajectory['states']]
+
+        # Plota os dois estados internos em cores diferentes
+        ax.plot(range(len(states_0)), states_0, 'b-', linewidth=1.5, label='Estado Interno 1')
+        ax.plot(range(len(states_1)), states_1, 'g-', linewidth=1.5, label='Estado Interno 2')
+
+        # Adiciona linhas horizontais de referência (opcional)
         for i in range(-2, 10, 2):
             ax.axhline(y=i, color='r', linestyle='--', alpha=0.3)
-        
+
         # Configurações do gráfico
         ax.set_xlabel('Número de passos')
-        ax.set_ylabel('Estado interno médio')
-        ax.set_title('a. Trajetória do Estado Interno')
+        ax.set_ylabel('Estado interno')
+        ax.set_title('a. Trajetória dos Estados Internos')
         ax.grid(True, linestyle='--', alpha=0.7)
-        
+        ax.legend()
+
         # Limites do eixo
-        ax.set_xlim(0, len(avg_state))
+        ax.set_xlim(0, len(states_0))
         ax.set_ylim(-3, 9)
+
 
     def _plot_drive_evolution(self, ax):
         """
