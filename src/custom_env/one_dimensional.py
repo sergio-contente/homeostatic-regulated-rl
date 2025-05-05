@@ -39,7 +39,6 @@ class HomeoEnv1D:
         self.agent_position = 0
 
         # Inicializa Q-Learning
-        self.q_table = np.zeros((len(self.state_space), len(self.action_space)))
         self.learning_rate = 0.5
         self.gamma = 0.99
         self.epsilon = 1.0
@@ -54,7 +53,7 @@ class HomeoEnv1D:
         self.training_height = 700
         self.history_max_len = 500
 
-        self.n_bins = 20  # ou outro número que você escolher
+        self.n_bins = 15  # ou outro número que você escolher
         self.bins = [np.linspace(-maxh, maxh, self.n_bins + 1) for _ in range(self.size)]
 
         self.q_table = np.zeros([self.n_bins] * self.size + [len(self.action_space)])
@@ -124,7 +123,7 @@ class HomeoEnv1D:
             self.current_state[resource_index] = min(self.current_state[resource_index] + self._outcome, self.maxh)
             self.consumption_counts[resource_index] += 1
 
-        decay = 0.05
+        decay = 0.07
         for i in range(len(self.current_state)):
             self.current_state[i] = max(self.current_state[i] * (1 - decay), -self.maxh)
 

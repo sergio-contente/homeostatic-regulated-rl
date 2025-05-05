@@ -24,7 +24,7 @@ def save_training_gif(frames, save_path, duration=0.05):
 
 def main():
     # === Configurações ===
-    maxh = 5
+    maxh = 8
     config_path = "config/config.yaml"
     drive_type = "base_drive"
     q_table_path = "models/custom/HomeoEnv1D/q_table.npy"
