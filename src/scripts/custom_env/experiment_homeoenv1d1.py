@@ -8,7 +8,7 @@ def main():
     # === Configurações do Experimento ===
     maxh = 5
     config_path = "config/config.yaml"
-    drive_type = "base_drive"  # base_drive, elliptic_drive, etc.
+    drive_type = "brase_drive"  # base_drive, elliptic_drive, etc.
     num_episodes = 2000  # Reduzindo para teste
     enable_visualization = False
     
