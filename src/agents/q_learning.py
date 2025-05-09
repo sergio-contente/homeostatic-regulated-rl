@@ -1,5 +1,7 @@
-import torch
 import numpy as np
+import pickle
+import os
+
 from ..utils.e_greedy import epsilon_greedy_policy
 
 class QLearning:
@@ -17,8 +19,8 @@ class QLearning:
         q_table (np.ndarray): Q-table to store Q-values for state-action pairs
     """
     
-    def __init__(self, env, state_size, action_size, learning_rate=0.1, discount_factor=0.99,
-                 epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, n_bins = 20):
+    def __init__(self, state_size, action_size, env=None, learning_rate=0.1, discount_factor=0.99,
+                 epsilon=1.0, epsilon_min=0.01, epsilon_decay=0.995, n_bins = 20, maxh=5):
         """
         Initializes the Q-Learning agent.
         
@@ -39,11 +41,14 @@ class QLearning:
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
         self.n_bins = n_bins
-        self.size = env.size
+        self.size = env.size if env != None else state_size -1 
+        self.env = None if env == None else env
         # Initialize Q-table with zeros
         self.q_table = np.zeros((state_size, action_size))
+        self.maxh = 5
         
     def get_action(self, state):
+        # Checked - it's correct
         """
         Selects an action using epsilon-greedy policy.
         
@@ -57,7 +62,7 @@ class QLearning:
         return epsilon_greedy_policy(q_values, self.epsilon)
     
     def update_q_table(self, state, action, reward, next_state, done):
-        # Converte os estados para índices
+        # Checked - it's correct
         state_idx = self._process_state(state)
         next_state_idx = self._process_state(next_state)
 
@@ -66,6 +71,7 @@ class QLearning:
         
     
     def decay_epsilon(self):
+        # Checkec -> correct
         """
         Reduces the value of epsilon to balance exploration and exploitation.
         """
@@ -79,16 +85,23 @@ class QLearning:
         Args:
             filepath (str): Path to save the file
         """
-        np.save(filepath, self.q_table)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+        model_filename = filepath + ".pkl"
+
+        with open(model_filename, 'wb') as f:
+            pickle.dump(self.q_table, f)
+
+        print(f"Model saved in: {model_filename}")
+
         
     def load_q_table(self, filepath):
         """
-        Loads the Q-table from a file.
-        
-        Args:
-            filepath (str): Path of the file to be loaded
+        Loads the Q-table from a file using pickle.
         """
-        self.q_table = np.load(filepath)
+        with open(filepath, 'rb') as f:
+            self.q_table = pickle.load(f)
+
         
     def train(self, env, num_episodes, max_steps_per_episode=1000):
         """
@@ -143,32 +156,42 @@ class QLearning:
                 print(f"Episode: {episode + 1}/{num_episodes}, Average Reward: {avg_reward:.2f}, Epsilon: {self.epsilon:.4f}")
         
         return rewards_per_episode
+
+    # def _process_state(self, state):
+    #     if isinstance(state, dict) and "internal_states" in state:
+    #         state = state["internal_states"]
+
+    #     if isinstance(state, np.ndarray):
+    #         # Converte valores de [-maxh, maxh] para [0, 2*maxh]
+    #         offset_state = state + self.maxh
+    #         return np.ravel_multi_index(tuple(offset_state), dims=[2 * self.maxh + 1] * len(state))
+
+    #     if isinstance(state, (int, np.integer)):
+    #         return state
+
+    #     raise ValueError(f"Unsupported state format: {type(state)}")
     
     def _process_state(self, state):
-        """Processa o estado para uso na tabela Q."""
-        # Se for dict vindo do ambiente original
         if isinstance(state, dict) and "internal_states" in state:
             state = state["internal_states"]
-        
+
         if isinstance(state, np.ndarray):
-            # Discretiza cada valor do array para um valor entre 0 e n_bins-1
-            discrete_state = []
-            for i, val in enumerate(state):
-                # Normaliza o valor para o intervalo [0, n_bins-1]
-                bin_idx = int(val * (self.n_bins / self.size))
-                bin_idx = max(0, min(self.n_bins - 1, bin_idx))  # Clip para garantir limites
-                discrete_state.append(bin_idx)
-                
-            # Converte o estado multi-dimensional para um índice único
-            return np.ravel_multi_index(tuple(discrete_state), dims=[self.n_bins] * len(state))
+            # Garante que os estados estão dentro dos limites
+            state = np.clip(state, -self.maxh, self.maxh)
             
+            # Converte valores de [-maxh, maxh] para [0, 2*maxh]
+            offset_state = state + self.maxh
+            
+            # Converte para inteiros
+            offset_state = np.round(offset_state).astype(int)
+            dims = [2 * self.maxh + 1] * len(state)
+        
+        return np.ravel_multi_index(tuple(offset_state), dims=dims)
+
         if isinstance(state, (int, np.integer)):
-            # Se já for um índice, retorna direto
             return state
-            
-        raise ValueError(f"Formato de estado não suportado: {type(state)}")
 
-
+        raise ValueError(f"Unsupported state format: {type(state)}")
 
     def evaluate(self, env, num_episodes=10, render=False):
         """

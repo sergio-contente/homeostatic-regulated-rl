@@ -96,3 +96,6 @@ class BaseDrive():
             if abs(optimal_value - current_value) > threshold:
                 return False
         return True
+    
+    def get_current_drive(self):
+        return self._current_drive
