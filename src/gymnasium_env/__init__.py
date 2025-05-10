@@ -1,8 +1,9 @@
 from gymnasium.envs.registration import register
 
 register(
-    id="gymnasium_env/GridWorld-v0",
-    entry_point="gymnasium_env.envs:GridWorldEnv",
+    id="GridWorld-v0",
+    entry_point="src.gymnasium_env.envs:GridWorldEnv",
+    max_episode_steps=3000
 )
 
 # Available parameters for the `register` function in Gymnasium:

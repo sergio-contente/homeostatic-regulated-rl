@@ -1,8 +1,22 @@
 global_params: # Every drive will get one of these
   # Naming every type of internal state
   optimal_internal_state:
-    food: 0
-    water: 0
+    food: 
+      value:  0
+      loss: 0.003
+      intake: 0.1
+    water: 
+      value:  0
+      loss: 0.003
+      intake: 0.1
+    energy: 
+      value:  0
+      loss: 0.003
+      intake: 0.1
+    temperature:
+      value:  0
+      loss: 0.003
+      intake: 0.1
 
 drive_params:
 
