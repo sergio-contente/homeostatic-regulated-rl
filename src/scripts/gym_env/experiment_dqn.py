@@ -17,13 +17,13 @@ from torch.utils.tensorboard import SummaryWriter
 
 import src.gymnasium_env
 
+config_path = "config/config.yaml"
+drive_type = "base_drive"  # ou "elliptic_drive"
+
 # Criar um diretório único para logs desta execução
 current_time = datetime.now().strftime('%Y%m%d-%H%M%S')
-log_dir = os.path.join('runs', f'DQN_GridWorld_{current_time}')
+log_dir = os.path.join('runs', f'DQN_GridWorld_{drive_type}_{current_time}')
 writer = SummaryWriter(log_dir)
-
-config_path = "config/config.yaml"
-drive_type = "base_drive"
 
 # Criar o ambiente e acessar o ambiente base através do wrapper TimeLimit
 env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type)
@@ -264,7 +264,7 @@ def optimize_model():
     return loss.item()
 
 if torch.cuda.is_available() or torch.backends.mps.is_available():
-    num_episodes = 600
+    num_episodes = 200
 else:
     num_episodes = 50
 

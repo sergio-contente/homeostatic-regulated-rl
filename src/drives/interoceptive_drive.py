@@ -1,4 +1,4 @@
-import torch
+import numpy as np
 from .base_drive import BaseDrive
 
 class InteroceptiveModulationDrive(BaseDrive):
@@ -22,13 +22,13 @@ class InteroceptiveModulationDrive(BaseDrive):
         :param current_internal_states: The current internal state vector (H_t).
         :return: Scalar torch.Tensor representing the modulated drive value.
         """
-        current_internal_states = self._to_tensor(current_internal_states)
-        optimal_states_tensor = self.get_tensor_optimal_states_values()
+        current_internal_states = self._to_array(current_internal_states)
+        optimal_states_array = self.get_array_optimal_states_values()
         
         # Apply interoceptive modulation
-        diff = self.eta * (optimal_states_tensor - current_internal_states)
+        diff = self.eta * (optimal_states_array - current_internal_states)
         
-        drive_sum = torch.sum(torch.abs(diff) ** self.n)
+        drive_sum = np.sum(np.abs(diff) ** self.n)
         drive_value = drive_sum ** (1 / self.m)
         
         return drive_value

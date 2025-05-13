@@ -6,24 +6,24 @@ from ..utils.get_params import ParameterHandler
 
 class HomeoEnv1D:
     def __init__(self, config_path, drive_type, maxh, enable_visualization, render_mode=None):
-        self.state_space = [(i, j) for i in range(-maxh, maxh + 1) for j in range(-maxh, maxh + 1)]
-        self.action_space = [0, 1, 2, 3, 4]  # ficar, esquerda, direita, consumir, não consumir
+        self.state_space = [(i, j) for i in range(-6, 6) for j in range(-6, 6)]
+        self.action_space = [0, 1, 2, 3, 4]  # ficar, esquerda, direita, consumir_1, consumir_2
         self.maxh = maxh
         self.steps = 0
         self.render_mode = render_mode
         self.enable_visualization = enable_visualization
 
-        self._outcome = 1
+        self._outcome = 0.1
         self.consumption_counts = {0: 0, 1: 0}
 
 
         self.param_manager = ParameterHandler(config_path)
         self.drive = self.param_manager.create_drive(drive_type)
 
-        tensor = self.drive.get_tensor_optimal_states_values()
-        self.optimal_point = tuple(tensor.tolist())
+        array = self.drive.get_array_optimal_states_values()
+        self.optimal_point = tuple(array.tolist())
 
-        self.size = self.drive.get_internal_state_size()
+        self.size = self.drive.get_internal_state_dimension()
         # Gera um estado aleatório diferente do ótimo
         while True:
             random_state = np.random.uniform(-self.maxh, self.maxh, self.size).astype(np.float32)
@@ -34,7 +34,7 @@ class HomeoEnv1D:
         initial_drive = self.drive.compute_drive(self.current_state)
         self.drive.update_drive(initial_drive)
 
-        self.resources_position = [-maxh + 2, maxh - 2]
+        self.resources_position = [-5, 5]
         self.agent_position = 0
 
         # Inicializa Q-Learning
@@ -53,7 +53,7 @@ class HomeoEnv1D:
         self.history_max_len = 500
 
         self.n_bins = 20  # ou outro número que você escolher
-        self.bins = [np.linspace(-maxh, maxh, self.n_bins + 1) for _ in range(self.size)]
+        self.bins = [np.linspace(-6, 6, self.n_bins + 1) for _ in range(self.size)]
 
         self.q_table = np.zeros([self.n_bins] * self.size + [len(self.action_space)])
         
@@ -150,33 +150,27 @@ class HomeoEnv1D:
             self.agent_position = min(self.agent_position + 1, self.maxh - 2)
 
         resource_index = None
-        if self.agent_position == self.resources_position[0]:
+        if self.agent_position == self.resources_position[0] and action == 3:
             resource_index = 0
-        elif self.agent_position == self.resources_position[1]:
+            self.current_state[resource_index] = min(self.current_state[resource_index] + self._outcome, self.maxh)
+            self.consumption_counts[resource_index] += 1
+        elif self.agent_position == self.resources_position[1] and action == 4:
             resource_index = 1
-
-        if resource_index is not None and action == 3:
-        #     self.current_state[resource_index] = np.clip(
-        #     self.current_state[resource_index] + self.current_state[resource_index] * self._outcome,
-        #     - self.maxh,
-        #     self.maxh
-        # )
             self.current_state[resource_index] = min(self.current_state[resource_index] + self._outcome, self.maxh)
             self.consumption_counts[resource_index] += 1
 
-        decay = 0.07
+        decay = 0.003
         for i in range(len(self.current_state)):
-            self.current_state[i] = max(self.current_state[i]  - decay , -self.maxh)
+            self.current_state[i] = self.current_state[i]  - decay
+            if self.current_state[i] < -self.maxh:
+                terminated = True
+            else:
+                terminated = False
 
         new_drive = self.drive.compute_drive(self.current_state)
         reward = self.drive.compute_reward(new_drive)
+        reward *= 100
         self.drive.update_drive(new_drive)
-
-        threshold = self._outcome / 2
-        terminated = self.drive.has_reached_optimal(self.current_state, threshold)
-
-        if terminated:
-            print("Optimal state reached!")
 
         observation = self.current_state
 

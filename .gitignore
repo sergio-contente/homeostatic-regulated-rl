@@ -183,3 +183,5 @@ pyrightconfig.json
 *.pkl
 
 *.npy
+
+events.out.tfevents.*
