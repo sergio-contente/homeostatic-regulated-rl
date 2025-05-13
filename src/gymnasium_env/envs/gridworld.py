@@ -39,15 +39,17 @@ class GridWorldEnv(gym.Env):
         self.action_space = spaces.Discrete(num_actions)
 
         state_names = self.drive.get_internal_states_names()
+        
+        resource_rng = np.random.RandomState(123)
 
         if self.dimension_internal_states <= self.size:
-            random_positions = np.random.choice(
+            random_positions = resource_rng.choice(
                 self.size, 
                 size=self.dimension_internal_states, 
                 replace=False
             )
         else:
-            random_positions = np.random.choice(
+            random_positions = resource_rng.choice(
                 self.size, 
                 size=self.dimension_internal_states, 
                 replace=True
@@ -92,7 +94,7 @@ class GridWorldEnv(gym.Env):
                 internal_states=self.np_random.uniform(
                     low=-0.3, 
                     high=0.3, 
-                    size=(self.dimension_internal_states,)  # Especifica a dimensão correta
+                    size=(self.dimension_internal_states,)
                 )
             )
 

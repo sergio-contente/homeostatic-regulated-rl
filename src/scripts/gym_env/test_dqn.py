@@ -9,7 +9,7 @@ import pandas as pd
 import src.gymnasium_env  # Importa seu ambiente personalizado
 
 # Caminho para o modelo salvo
-model_path = "runs/DQN_GridWorld_interoceptive_drive_20250511-223125/dqn_model.pth"
+model_path = "runs/DQN_GridWorld_base_drive_20250513-232938/dqn_model.pth"
 
 
 # Configurações do ambiente
