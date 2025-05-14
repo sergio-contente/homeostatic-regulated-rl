@@ -401,7 +401,7 @@ class GridWorldEnv(gym.Env):
         
         # Mostrar legenda dos recursos
         legend_y = info_start_y + 50 + self.dimension_internal_states * bar_spacing + 30
-        legend_title = label_font.render("Recursos:", True, (0, 0, 0))
+        legend_title = label_font.render("Resources:", True, (0, 0, 0))
         canvas.blit(legend_title, (20, legend_y))
         
         # Mostrar cada recurso na legenda
