@@ -40,6 +40,11 @@ class BaseDrive():
             for state_name, state_config in optimal_internal_states_config.items()
         }
 
+        self._internal_states_resources_regen = {
+            state_name: state_config['regeneration']
+            for state_name, state_config in optimal_internal_states_config.items()
+        }
+
     def _to_array(self, x):
         """
         Utility method to ensure input is a numpy array.
@@ -66,6 +71,12 @@ class BaseDrive():
         """
         return self._internal_states_intake_rates[state_name]
     
+    def get_state_resources_regen_rate(self, state_name):
+        """
+        Get the resource regeneration rate for a specific internal state.
+        """
+        return self._internal_states_resources_regen[state_name]
+    
     def get_array_optimal_states_values(self):
         """
         Convert optimal state values to a numpy array.
@@ -91,6 +102,15 @@ class BaseDrive():
         rates = []
         for state_name in self._internal_states_intake_rates:
             rates.append(self._internal_states_intake_rates[state_name])
+        return np.array(rates, dtype=np.float32)
+    
+    def get_array_resources_regeneration_rate(self):
+        """
+        Convert resource regeneration rates to a numpy array.
+        """
+        rates = []
+        for state_name in self._internal_states_resources_regen:
+            rates.append(self._internal_states_resources_regen[state_name])
         return np.array(rates, dtype=np.float32)
 
     def has_state(self, state_name):
