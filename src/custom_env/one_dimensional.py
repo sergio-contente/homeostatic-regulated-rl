@@ -6,25 +6,24 @@ from ..utils.get_params import ParameterHandler
 
 class HomeoEnv1D:
     def __init__(self, config_path, drive_type, maxh, enable_visualization, render_mode=None):
-        self.state_space = [(i, j) for i in range(-maxh, maxh + 1) for j in range(-maxh, maxh + 1)]
-        self.state_to_idx = {state: idx for idx, state in enumerate(self.state_space)}
-        self.action_space = [0, 1, 2, 3, 4]  # ficar, esquerda, direita, consumir, não consumir
+        self.state_space = [(i, j) for i in range(-6, 6) for j in range(-6, 6)]
+        self.action_space = [0, 1, 2, 3, 4]  # ficar, esquerda, direita, consumir_1, consumir_2
         self.maxh = maxh
         self.steps = 0
         self.render_mode = render_mode
         self.enable_visualization = enable_visualization
 
-        self._outcome = 1
+        self._outcome = 0.1
         self.consumption_counts = {0: 0, 1: 0}
 
 
         self.param_manager = ParameterHandler(config_path)
         self.drive = self.param_manager.create_drive(drive_type)
 
-        tensor = self.drive.get_tensor_optimal_states_values()
-        self.optimal_point = tuple(tensor.tolist())
+        array = self.drive.get_array_optimal_states_values()
+        self.optimal_point = tuple(array.tolist())
 
-        self.size = self.drive.get_internal_state_size()
+        self.size = self.drive.get_internal_state_dimension()
         # Gera um estado aleatório diferente do ótimo
         while True:
             random_state = np.random.uniform(-self.maxh, self.maxh, self.size).astype(np.float32)
@@ -35,7 +34,7 @@ class HomeoEnv1D:
         initial_drive = self.drive.compute_drive(self.current_state)
         self.drive.update_drive(initial_drive)
 
-        self.resources_position = [-maxh + 2, maxh - 2]
+        self.resources_position = [-5, 5]
         self.agent_position = 0
 
         # Inicializa Q-Learning
@@ -53,8 +52,8 @@ class HomeoEnv1D:
         self.training_height = 700
         self.history_max_len = 500
 
-        self.n_bins = 15  # ou outro número que você escolher
-        self.bins = [np.linspace(-maxh, maxh, self.n_bins + 1) for _ in range(self.size)]
+        self.n_bins = 20  # ou outro número que você escolher
+        self.bins = [np.linspace(-6, 6, self.n_bins + 1) for _ in range(self.size)]
 
         self.q_table = np.zeros([self.n_bins] * self.size + [len(self.action_space)])
         
@@ -65,13 +64,53 @@ class HomeoEnv1D:
         self.step_reward = 0.0
 
     def discretize_state(self, state):
+        """
+        Converte um estado contínuo para um estado discretizado para uso na Q-table.
+        
+        Args:
+            state: Estado contínuo (array numpy ou lista)
+            
+        Returns:
+            tuple: Índices discretizados para uso na Q-table
+        """
+        if isinstance(state, dict) and "internal_states" in state:
+            state = state["internal_states"]
+        
         discretized = []
         for i, val in enumerate(state):
-            bin_idx = np.digitize(val, self.bins[i]) - 1  # -1 porque digitize começa em 1
-            bin_idx = min(max(bin_idx, 0), self.n_bins - 1)  # garantir que fica no intervalo
+            # Garantir que o valor está dentro dos limites
+            val = np.clip(val, -self.maxh, self.maxh)
+            
+            # Usar np.digitize para encontrar o bin correto
+            bin_idx = np.digitize(val, self.bins[i]) - 1
+            
+            # Garantir que o índice está dentro dos limites válidos
+            bin_idx = np.clip(bin_idx, 0, self.n_bins - 1)
+            
             discretized.append(bin_idx)
+        
         return tuple(discretized)
-
+    
+    def continuous_from_discrete(self, discrete_state):
+        """
+        Converte um estado discretizado de volta para um estado contínuo (aproximado).
+        Útil para debugging e visualização.
+        
+        Args:
+            discrete_state: Estado discretizado (tuple de índices)
+            
+        Returns:
+            np.array: Estado contínuo aproximado
+        """
+        continuous = np.zeros(len(discrete_state), dtype=np.float32)
+        
+        for i, bin_idx in enumerate(discrete_state):
+            # Usar o ponto médio do bin como valor contínuo
+            bin_edges = self.bins[i]
+            continuous[i] = (bin_edges[bin_idx] + bin_edges[bin_idx+1]) / 2
+        
+        return continuous
+    
     def reset(self):
         # Gera um estado aleatório diferente do ótimo
         while True:
@@ -84,8 +123,10 @@ class HomeoEnv1D:
         self.drive.update_drive(initial_drive)
         self.agent_position = 0
         self.steps = 0
+        
+        # Retorna o estado contínuo, não o discretizado
         return self.current_state, {}
-    
+
     def compute_action_mask(self):
         """
         Returns a boolean mask of valid actions.
@@ -109,33 +150,27 @@ class HomeoEnv1D:
             self.agent_position = min(self.agent_position + 1, self.maxh - 2)
 
         resource_index = None
-        if self.agent_position == self.resources_position[0]:
+        if self.agent_position == self.resources_position[0] and action == 3:
             resource_index = 0
-        elif self.agent_position == self.resources_position[1]:
+            self.current_state[resource_index] = min(self.current_state[resource_index] + self._outcome, self.maxh)
+            self.consumption_counts[resource_index] += 1
+        elif self.agent_position == self.resources_position[1] and action == 4:
             resource_index = 1
-
-        if resource_index is not None and action == 3:
-        #     self.current_state[resource_index] = np.clip(
-        #     self.current_state[resource_index] + self.current_state[resource_index] * self._outcome,
-        #     - self.maxh,
-        #     self.maxh
-        # )
             self.current_state[resource_index] = min(self.current_state[resource_index] + self._outcome, self.maxh)
             self.consumption_counts[resource_index] += 1
 
-        decay = 0.07
+        decay = 0.003
         for i in range(len(self.current_state)):
-            self.current_state[i] = max(self.current_state[i] * (1 - decay), -self.maxh)
+            self.current_state[i] = self.current_state[i]  - decay
+            if self.current_state[i] < -self.maxh:
+                terminated = True
+            else:
+                terminated = False
 
         new_drive = self.drive.compute_drive(self.current_state)
         reward = self.drive.compute_reward(new_drive)
+        reward *= 100
         self.drive.update_drive(new_drive)
-
-        threshold = self._outcome / 2
-        terminated = self.drive.has_reached_optimal(self.current_state, threshold)
-
-        # if terminated:
-        #     print("Optimal state reached!")
 
         observation = self.current_state
 
@@ -157,88 +192,170 @@ class HomeoEnv1D:
     #     exp_q = np.exp(q_values / max(temperature, 1e-6))
     #     probabilities = exp_q / np.sum(exp_q)
     #     return np.random.choice(self.action_space, p=probabilities)
-    def select_action(self, state_idx, epsilon=0.1, mask=None):
+    def select_action(self, state, epsilon=None):
         """
-        Selects an action using epsilon-greedy with optional action mask.
+        Seleciona uma ação usando epsilon-greedy com mascaramento opcional.
+        
+        Args:
+            state: Estado contínuo (será discretizado internamente)
+            epsilon: Valor de epsilon para exploração (se None, usa o self.epsilon)
+            
+        Returns:
+            int: Ação selecionada
         """
-        if mask is None:
-            mask = np.ones(len(self.action_space), dtype=np.bool)
-
+        # Discretizar o estado para consulta na Q-table
+        state_idx = self.discretize_state(state)
+        
+        # Obter máscara de ações válidas
+        mask = self.compute_action_mask()
         valid_actions = np.where(mask)[0]
-
+        
+        # Usar epsilon da instância se não for especificado
+        if epsilon is None:
+            epsilon = self.epsilon
+        
+        # Epsilon-greedy com mascaramento
         if np.random.random() < epsilon:
-            # Explore only from valid actions
+            # Exploração - escolher uma ação válida aleatoriamente
             return np.random.choice(valid_actions)
         else:
-            # Exploit: choose the best valid action
+            # Exploração - escolher a melhor ação válida
             q_values = self.q_table[state_idx]
-            # Mask invalid actions by setting them to -inf
+            
+            # Mascarar ações inválidas
             masked_q_values = np.full_like(q_values, -np.inf)
             masked_q_values[mask] = q_values[mask]
+            
             return np.argmax(masked_q_values)
-
-
-    def update_q_table(self, state_idx, action, reward, next_state_idx):
+    
+    def update_q_table(self, state, action, reward, next_state, done=False):
+        """
+        Atualiza a Q-table com base na transição observada.
+        
+        Args:
+            state: Estado atual (contínuo)
+            action: Ação tomada
+            reward: Recompensa recebida
+            next_state: Próximo estado (contínuo)
+            done: Flag indicando se o episódio terminou
+        """
+        # Discretizar os estados
+        state_idx = self.discretize_state(state)
+        next_state_idx = self.discretize_state(next_state)
+        
+        # Obter máscara de ações válidas para o próximo estado
+        next_mask = self.compute_action_mask()
+        
+        # Calcular target considerando apenas ações válidas
+        if done:
+            q_target = reward
+        else:
+            # Mascarar ações inválidas no próximo estado
+            next_q_values = self.q_table[next_state_idx]
+            masked_next_q = np.full_like(next_q_values, -np.inf)
+            masked_next_q[next_mask] = next_q_values[next_mask]
+            
+            # Usar o máximo Q-valor entre ações válidas
+            q_target = reward + self.gamma * np.max(masked_next_q)
+        
+        # Q-valor atual
         q_predict = self.q_table[state_idx][action]
-        q_target = reward + self.gamma * np.max(self.q_table[next_state_idx])
+        
+        # Atualização da Q-table
         self.q_table[state_idx][action] += self.learning_rate * (q_target - q_predict)
 
-    def train(self, num_episodes=500, max_steps_per_episode=1000):
-        rewards_per_episode = []
-        self.consumption_counts = {0: 0, 1: 0}
-
-        for episode in range(num_episodes):
-            state, _ = self.reset()
-            state_idx = self.discretize_state(state)
-            total_reward = 0
+    def update_q_table(self, state, action, reward, next_state, done=False):
+        """
+        Atualiza a Q-table com base na transição observada.
+        
+        Args:
+            state: Estado atual (contínuo)
+            action: Ação tomada
+            reward: Recompensa recebida
+            next_state: Próximo estado (contínuo)
+            done: Flag indicando se o episódio terminou
+        """
+        # Discretizar os estados
+        state_idx = self.discretize_state(state)
+        next_state_idx = self.discretize_state(next_state)
+        
+        # Obter máscara de ações válidas para o próximo estado
+        next_mask = self.compute_action_mask()
+        
+        # Calcular target considerando apenas ações válidas
+        if done:
+            q_target = reward
+        else:
+            # Mascarar ações inválidas no próximo estado
+            next_q_values = self.q_table[next_state_idx]
+            masked_next_q = np.full_like(next_q_values, -np.inf)
+            masked_next_q[next_mask] = next_q_values[next_mask]
             
-            # Atualizar valores para início do episódio
+            # Usar o máximo Q-valor entre ações válidas
+            q_target = reward + self.gamma * np.max(masked_next_q)
+        
+        # Q-valor atual
+        q_predict = self.q_table[state_idx][action]
+        
+        # Atualização da Q-table
+        self.q_table[state_idx][action] += self.learning_rate * (q_target - q_predict)
+    
+    def train(self, num_episodes=500, max_steps_per_episode=1000):
+        """
+        Treina o agente com Q-learning.
+        """
+        rewards_per_episode = []
+        
+        for episode in range(num_episodes):
+            # Reset do ambiente
+            state, _ = self.reset()
+            total_reward = 0
+            done = False
+            truncated = False
+            
+            # Atualizar valores para visualização
             self.current_episode = episode
             self.current_reward = total_reward
             self.current_epsilon = self.epsilon
-
+            
             for step in range(max_steps_per_episode):
-                # Processa eventos pygame para evitar travamento
+                # Processar eventos pygame
                 if self.enable_visualization:
                     for event in pygame.event.get():
                         if event.type == pygame.QUIT:
                             pygame.quit()
-                            return rewards_per_episode  # Retorna os resultados parciais
+                            return rewards_per_episode
                 
-                # Seleciona e executa a ação
-                mask = self.compute_action_mask()
-                action = self.select_action(state_idx, self.epsilon, mask)
-                next_state, reward, done, truncated, _ = self.step(action)
-                next_state_idx = self.discretize_state(next_state)
-
-                # Atualiza a Q-table
-                self.update_q_table(state_idx, action, reward, next_state_idx)
-
-                # Atualiza o estado
-                state_idx = next_state_idx
+                # Selecionar e executar a ação
+                action = self.select_action(state)  # Usa o estado contínuo
+                next_state, reward, done, truncated, info = self.step(action)
+                
+                # Atualizar a Q-table
+                self.update_q_table(state, action, reward, next_state, done or truncated)
+                
+                # Atualizar estado atual
+                state = next_state
                 total_reward += reward
                 
-                # IMPORTANTE: Atualiza a recompensa total para a visualização
+                # Atualizar recompensa para visualização
                 self.current_reward = total_reward
                 
-                # Verificação de término
+                # Verificar condições de término
                 done = False
                 if done or truncated:
                     break
-
-            # Atualiza epsilon
+            
+            # Atualizar epsilon (decaimento)
             if self.epsilon > self.epsilon_min:
                 self.epsilon *= self.epsilon_decay
-
+            
+            # Registrar recompensa do episódio
             rewards_per_episode.append(total_reward)
-
-            # Log de progresso
+            
+            # Log a cada 10 episódios
             if (episode + 1) % 10 == 0:
                 print(f"Episode {episode+1}/{num_episodes} | Total Reward: {total_reward:.2f} | Epsilon: {self.epsilon:.4f}")
-            
-        print(f"Total de consumos - Recurso 0: {self.consumption_counts[0]}, Recurso 1: {self.consumption_counts[1]}")
-
-
+        
         return rewards_per_episode
 
     def setup_training_visualization(self):

@@ -6,7 +6,7 @@ from src.custom_env.one_dimensional import HomeoEnv1D
 
 def main():
     # === Configurações do Experimento ===
-    maxh = 8
+    maxh = 1
     config_path = "config/config.yaml"
     drive_type = "base_drive"  # base_drive, elliptic_drive, etc.
     num_episodes = 2000  # Reduzindo para teste
