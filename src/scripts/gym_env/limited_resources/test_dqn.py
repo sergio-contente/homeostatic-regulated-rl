@@ -9,14 +9,14 @@ import pandas as pd
 import src.gymnasium_env  # Import your custom environment
 
 # Path to the saved model
-model_path = "runs/DQN_GridWorld_interoceptive_drive_20250514-172403/dqn_model.pth"
+model_path = "runs/DQN_LimitedResources_base_drive_20250514-154348/dqn_model.pth"
 
 # Environment settings
 config_path = "config/config.yaml"
-drive_type = "interoceptive_drive"
+drive_type = "base_drive"
 
 # Create environment with human rendering
-env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type, render_mode="human")
+env = gym.make("LimitedResources-v0", config_path=config_path, drive_type=drive_type, render_mode="human")
 
 # Get the base environment
 def get_unwrapped_env(env):

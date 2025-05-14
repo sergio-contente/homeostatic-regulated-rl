@@ -22,7 +22,7 @@ drive_type = "base_drive"  # ou "elliptic_drive"
 
 # Criar um diretório único para logs desta execução
 current_time = datetime.now().strftime('%Y%m%d-%H%M%S')
-log_dir = os.path.join('runs', f'DQN_GridWorld_{drive_type}_{current_time}')
+log_dir = os.path.join('runs', f'DQN_LimitedResources_{drive_type}_{current_time}')
 writer = SummaryWriter(log_dir)
 
 # Criar o ambiente e acessar o ambiente base através do wrapper TimeLimit

@@ -18,7 +18,7 @@ from torch.utils.tensorboard import SummaryWriter
 import src.gymnasium_env
 
 config_path = "config/config.yaml"
-drive_type = "base_drive"  # ou "elliptic_drive"
+drive_type = "interoceptive_drive"  # ou "elliptic_drive"
 
 # Criar um diretório único para logs desta execução
 current_time = datetime.now().strftime('%Y%m%d-%H%M%S')

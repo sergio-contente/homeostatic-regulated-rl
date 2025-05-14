@@ -28,7 +28,7 @@ class LimitedResourcesEnv(gym.Env):
                     low=-1.0,
                     high=1.0,
                     shape=(self.dimension_internal_states,),
-                    dtype=np.float32,
+                    dtype=np.float64,
                 )
             }
         )
@@ -73,7 +73,7 @@ class LimitedResourcesEnv(gym.Env):
 
         self.agent_info = {
             "position": 0,
-            "internal_states": np.zeros(self.dimension_internal_states, dtype=np.float32)
+            "internal_states": np.zeros(self.dimension_internal_states, dtype=np.float64)
         }
 
         self.previous_internal_states = np.array(self.agent_info["internal_states"])
