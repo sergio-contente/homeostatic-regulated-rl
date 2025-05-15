@@ -28,7 +28,7 @@ class GridWorldEnv(gym.Env):
                     low=-1.0,
                     high=1.0,
                     shape=(self.dimension_internal_states,),
-F                    dtype=np.float64,
+                    dtype=np.float64
                 )
             }
         )
