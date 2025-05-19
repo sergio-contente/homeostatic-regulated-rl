@@ -9,14 +9,14 @@ import pandas as pd
 import src.gymnasium_env  # Import your custom environment
 
 # Path to the saved model
-model_path = "runs/DQN_GridWorld_base_drive_20250514-004659//dqn_model.pth"
+model_path = "runs/DQN_GridWorld_ellipitc_drive_20250517-230337/dqn_model.pth"
 
 # Environment settings
-config_path = "config/config.yaml"
-drive_type = "base_drive"
+config_path = "config/test_config.yaml"
+drive_type = "elliptic_drive"  # Change to "drive" if using the drive class
 
 # Create environment with human rendering
-env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type, render_mode="human")
+env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type, render_mode="human", size=5)
 
 # Get the base environment
 def get_unwrapped_env(env):

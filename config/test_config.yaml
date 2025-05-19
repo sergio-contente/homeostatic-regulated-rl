@@ -1,22 +1,39 @@
 global_params: # Every drive will get one of these
   # Naming every type of internal state
   optimal_internal_state:
-    food: 1.5
-    water: 2.5
-    temperature: 1.0
-    energy: 3.0
+    food: 
+      value:  0
+      loss: 0.003
+      intake: 0.1
+      regeneration: 0.01
+    water: 
+      value:  0
+      loss: 0.003
+      intake: 0.1
+      regeneration: 0.01
+    energy: 
+      value:  0
+      loss: 0.003
+      intake: 0.1
+      regeneration: 0.001
+    temperature:
+      value:  0
+      loss: 0.003
+      intake: 0.1
+      regeneration: 0.01
 
 drive_params:
+
   # Base drive configs
   base_drive:
-    n: 3
-    m: 4
+    n: 4
+    m: 3
 
   # Elliptic drive configs
   elliptic_drive:
-    n_vector: [3, 4, 2, 5]
-    m: 5
+    n_vector: [1, 2, 3, 4]
 
   # Interoceptive drive configs
   interoceptive_drive:
-    eta: 0.7
+    eta: 2.0
+  
