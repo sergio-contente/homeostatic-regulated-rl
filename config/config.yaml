@@ -26,8 +26,8 @@ drive_params:
 
   # Base drive configs
   base_drive:
-    n: 1
-    m: 1
+    n: 4
+    m: 3
 
   # Elliptic drive configs
   elliptic_drive:
