@@ -18,34 +18,27 @@ from torch.utils.tensorboard import SummaryWriter
 import src.gymnasium_env
 
 config_path = "config/config.yaml"
-drive_type = "base_drive"  # or "elliptic_drive"
+drive_type = "base_drive"
 
-# Create a unique directory for logs of this run
 current_time = datetime.now().strftime('%Y%m%d-%H%M%S')
 log_dir = os.path.join('runs', f'DQN_LimitedResources_{drive_type}_{current_time}')
 writer = SummaryWriter(log_dir)
 
-# Create the environment and access the base environment through the TimeLimit wrapper
 env = gym.make("LimitedResources-v0", config_path=config_path, drive_type=drive_type)
 
-# Get the base environment (GridWorldEnv) if wrapped
-
 def get_unwrapped_env(env):
-    """Get the base environment, ignoring wrappers like TimeLimit"""
     if hasattr(env, 'env'):
         return get_unwrapped_env(env.env)
     return env
 
 base_env = get_unwrapped_env(env)
 
-# Configure matplotlib
 is_ipython = 'inline' in matplotlib.get_backend()
 if is_ipython:
     from IPython import display
 
 plt.ion()
 
-# Check if GPU is available
 device = torch.device(
     "cuda" if torch.cuda.is_available() else
     "mps" if torch.backends.mps.is_available() else
@@ -61,7 +54,6 @@ class ReplayMemory(object):
         self.memory = deque([], maxlen=capacity)
 
     def push(self, *args):
-        """Save a transition"""
         self.memory.append(Transition(*args))
 
     def sample(self, batch_size):
@@ -93,14 +85,14 @@ LR = 1e-4
 n_actions = env.action_space.n
 
 def process_observation(observation):
-    """Convert dictionary observation to flat array for the neural network"""
-    position = float(observation['position'])
+    position = np.array([float(observation['position'])], dtype=np.float32)
     internal_states = observation['internal_states'].astype(np.float32)
-    flat_observation = np.concatenate(([position], internal_states))
-    return flat_observation, position, internal_states
+    resources_map = observation['resources_map'].astype(np.float32)
+    flat_observation = np.concatenate((position, internal_states, resources_map))
+    return flat_observation, observation['position'], internal_states, resources_map
 
 state, info = env.reset()
-processed_state, position, internal_states = process_observation(state)
+processed_state, position, internal_states, resources_map = process_observation(state)
 n_observations = len(processed_state)
 
 try:
@@ -206,7 +198,7 @@ episode_rewards = []
 
 for i_episode in range(num_episodes):
     state, info = env.reset()
-    processed_state, position, internal_states = process_observation(state)
+    processed_state, position, internal_states, resources_map = process_observation(state)
     state_tensor = torch.tensor(processed_state, dtype=torch.float32, device=device).unsqueeze(0)
     try:
         current_drive = base_env.drive.get_current_drive()
@@ -223,7 +215,7 @@ for i_episode in range(num_episodes):
         total_steps += 1
         action = select_action(state_tensor)
         observation, reward, terminated, truncated, _ = env.step(action.item())
-        processed_obs, new_position, new_internal_states = process_observation(observation)
+        processed_obs, new_position, new_internal_states, new_resources_map = process_observation(observation)
         try:
             new_drive = base_env.drive.get_current_drive()
             writer.add_scalar('States/drive', new_drive, total_steps)

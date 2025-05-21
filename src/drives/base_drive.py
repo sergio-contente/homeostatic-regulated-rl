@@ -219,3 +219,13 @@ class BaseDrive():
         updated_states = current_states + intake
         
         return updated_states
+    
+    def apply_resource_regeneration(self, resource_available, resource_name):
+        if not resource_available:
+            random_number = np.random.uniform(0, 1)
+            if random_number < self.get_state_resources_regen_rate(resource_name):
+                return True
+            else:
+                return False
+        else:
+            return True

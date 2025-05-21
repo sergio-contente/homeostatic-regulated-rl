@@ -9,7 +9,7 @@ import pandas as pd
 import src.gymnasium_env  # Import your custom environment
 
 # Path to the saved model
-model_path = "runs/DQN_LimitedResources_base_drive_20250514-154348/dqn_model.pth"
+model_path = "runs/DQN_LimitedResources_base_drive_20250520-173208/dqn_model.pth"
 
 # Environment settings
 config_path = "config/config.yaml"

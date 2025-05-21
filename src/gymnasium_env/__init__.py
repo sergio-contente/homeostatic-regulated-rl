@@ -8,7 +8,7 @@ register(
 
 register(
     id="LimitedResources-v0",
-    entry_point="src.gymnasium_env.envs:LimitedResourcesEnv",
+    entry_point="src.gymnasium_env.envs:LimitedResources1D",
     max_episode_steps=3000
 )
 

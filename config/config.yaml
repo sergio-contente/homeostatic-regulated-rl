@@ -5,22 +5,22 @@ global_params: # Every drive will get one of these
       value:  0
       loss: 0.003
       intake: 0.1
-      regeneration: 1
+      regeneration: 0.5
     water: 
       value:  0
       loss: 0.003
       intake: 0.1
-      regeneration: 1
+      regeneration: 0.5
     energy: 
       value:  0
       loss: 0.003
       intake: 0.1
-      regeneration: 1
+      regeneration: 0.5
     temperature:
       value:  0
       loss: 0.003
       intake: 0.1
-      regeneration: 1
+      regeneration: 0.5
 
 drive_params:
 
