@@ -8,18 +8,18 @@ import cv2
 from datetime import datetime
 from gymnasium.wrappers import FlattenObservation
 from stable_baselines3 import DQN
-import src.gymnasium_env  # your custom environment
+import src.gymnasium_env  # register LimitedResources2DEnv
 
 # === CONFIG ===
 config_path = "config/config.yaml"
-drive_type = "elliptic_drive"
-model_path = "runs/SB3_DQN_GridWorld_elliptic_drive_1234/dqn_model_final"
+drive_type = "base_drive"
+model_path = "runs/SB3_DQN_LimitedResources2D_base_drive/dqn_model_final"  # Replace with actual path
 output_dir = "sb3_test_results"
 videos_dir = os.path.join(output_dir, "videos")
 os.makedirs(videos_dir, exist_ok=True)
 
 # === ENVIRONMENT ===
-raw_env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type, render_mode="human")
+raw_env = gym.make("LimitedResources2D-v0", config_path=config_path, drive_type=drive_type, render_mode="human")
 env = FlattenObservation(raw_env)
 base_env = raw_env.unwrapped
 
@@ -48,7 +48,7 @@ positions, rewards, actions, frames, drive_history = [], [], [], [], []
 state_names = get_state_names()
 internal_states_history = {name: [] for name in state_names}
 
-positions.append(base_env.agent_info["position"])
+positions.append(tuple(base_env.agent_info["position"]))
 frames.append(capture_pygame_screen())
 drive_history.append(base_env.drive.get_current_drive())
 for i, name in enumerate(state_names):
@@ -64,7 +64,7 @@ while not done and step < max_steps:
     episode_reward += reward
     step += 1
 
-    positions.append(base_env.agent_info["position"])
+    positions.append(tuple(base_env.agent_info["position"]))
     frames.append(capture_pygame_screen())
     drive_history.append(base_env.drive.get_current_drive())
     for i, name in enumerate(state_names):
@@ -73,7 +73,7 @@ while not done and step < max_steps:
 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
 # === SAVE VIDEO ===
-video_path = os.path.join(videos_dir, f"sb3_episode_{timestamp}.mp4")
+video_path = os.path.join(videos_dir, f"sb3_limited2d_episode_{timestamp}.mp4")
 frames_bgr = [cv2.cvtColor(f.transpose(1, 0, 2), cv2.COLOR_RGB2BGR) for f in frames]
 h, w, _ = frames_bgr[0].shape
 writer = cv2.VideoWriter(video_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (w, h))
@@ -85,13 +85,18 @@ print(f"🎥 Video saved: {video_path}")
 # === PLOT ===
 fig = plt.figure(figsize=(15, 12))
 
+# Trajectory in 2D
 ax1 = fig.add_subplot(2, 2, 1)
-ax1.plot(positions, label="Position")
-ax1.set_title("Agent Trajectory")
-ax1.set_xlabel("Steps")
-ax1.set_ylabel("Position")
+xs = [p[0] for p in positions]
+ys = [p[1] for p in positions]
+ax1.plot(xs, ys, marker='o', linestyle='-', label="Trajectory")
+ax1.set_title("Agent 2D Trajectory")
+ax1.set_xlabel("X")
+ax1.set_ylabel("Y")
 ax1.grid(True)
+ax1.legend()
 
+# Drive + cumulative reward
 ax2 = fig.add_subplot(2, 2, 2)
 ax2.plot(drive_history, label="Drive", color="green")
 ax2.set_title("Drive Value")
@@ -105,6 +110,7 @@ ax2r.set_ylabel("Cumulative Reward", color='r')
 ax2r.tick_params(axis='y', labelcolor='r')
 ax2.legend(loc="upper left")
 
+# Internal states
 ax3 = fig.add_subplot(2, 2, 3)
 for name, vals in internal_states_history.items():
     ax3.plot(vals, label=name)
@@ -114,6 +120,7 @@ ax3.set_ylabel("Value")
 ax3.grid(True)
 ax3.legend()
 
+# Reward per step
 ax4 = fig.add_subplot(2, 2, 4)
 ax4.bar(range(len(rewards)), rewards, color="orange")
 ax4.set_title("Reward per Step")
@@ -122,7 +129,7 @@ ax4.set_ylabel("Reward")
 ax4.grid(True)
 
 plt.tight_layout()
-analysis_path = os.path.join(output_dir, f"sb3_analysis_{timestamp}.png")
+analysis_path = os.path.join(output_dir, f"sb3_limited2d_analysis_{timestamp}.png")
 plt.savefig(analysis_path)
 plt.close()
 print(f"📊 Analysis plot saved: {analysis_path}")
@@ -130,7 +137,8 @@ print(f"📊 Analysis plot saved: {analysis_path}")
 # === SAVE CSV ===
 data = {
     "step": list(range(len(rewards))),
-    "position": positions[1:],
+    "x": [p[0] for p in positions[1:]],
+    "y": [p[1] for p in positions[1:]],
     "action": actions,
     "reward": rewards,
     "drive": drive_history[1:]
@@ -138,7 +146,7 @@ data = {
 for name, vals in internal_states_history.items():
     data[name] = vals[1:]
 df = pd.DataFrame(data)
-csv_path = os.path.join(output_dir, f"sb3_data_{timestamp}.csv")
+csv_path = os.path.join(output_dir, f"sb3_limited2d_data_{timestamp}.csv")
 df.to_csv(csv_path, index=False)
 print(f"📁 CSV saved: {csv_path}")
 

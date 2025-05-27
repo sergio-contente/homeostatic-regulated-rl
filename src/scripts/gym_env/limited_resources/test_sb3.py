@@ -12,14 +12,14 @@ import src.gymnasium_env  # your custom environment
 
 # === CONFIG ===
 config_path = "config/config.yaml"
-drive_type = "elliptic_drive"
-model_path = "runs/SB3_DQN_GridWorld_elliptic_drive_1234/dqn_model_final"
+drive_type = "base_drive"
+model_path = "runs/SB3_DQN_LimitedResources_base_drive_reg01/dqn_model_final"
 output_dir = "sb3_test_results"
 videos_dir = os.path.join(output_dir, "videos")
 os.makedirs(videos_dir, exist_ok=True)
 
 # === ENVIRONMENT ===
-raw_env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type, render_mode="human")
+raw_env = gym.make("LimitedResources-v0", config_path=config_path, drive_type=drive_type, render_mode="human")
 env = FlattenObservation(raw_env)
 base_env = raw_env.unwrapped
 

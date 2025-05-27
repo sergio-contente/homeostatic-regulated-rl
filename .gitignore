@@ -184,6 +184,8 @@ pyrightconfig.json
 
 *.npy
 
-*.zip
+*_steps.zip
 
 events.out.tfevents.*
+
+*.csv

@@ -5,22 +5,22 @@ global_params: # Every drive will get one of these
       value:  0
       loss: 0.003
       intake: 0.1
-      regeneration: 0.5
+      regeneration: 0.1
     water: 
       value:  0
       loss: 0.003
       intake: 0.1
-      regeneration: 0.5
+      regeneration: 0.1
     energy: 
       value:  0
       loss: 0.003
       intake: 0.1
-      regeneration: 0.5
+      regeneration: 0.1
     temperature:
       value:  0
       loss: 0.003
       intake: 0.1
-      regeneration: 0.5
+      regeneration: 0.1
 
 drive_params:
 
@@ -31,9 +31,9 @@ drive_params:
 
   # Elliptic drive configs
   elliptic_drive:
-    n_vector: [4, 3, 2, 5]
+    n_vector: [1,2,3,4]
 
   # Interoceptive drive configs
   interoceptive_drive:
-    eta: 0.5
+    eta: 2
   
