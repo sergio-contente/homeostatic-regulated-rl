@@ -47,6 +47,7 @@ class DriveLoggingCallback(BaseCallback):
             drive = self.base_env.drive.get_current_drive()
             internal_states = self.base_env.agent_info["internal_states"]
             position = self.base_env.agent_info["position"]
+            resources_map = self.base_env.agent_info["resources_map"]
 
             self.writer.add_scalar("States/drive", drive, self.num_timesteps)
 
@@ -60,6 +61,12 @@ class DriveLoggingCallback(BaseCallback):
             for i, value in enumerate(internal_states):
                 name = self.state_names[i] if i < len(self.state_names) else f"state_{i}"
                 self.writer.add_scalar(f"States/{name}", value, self.num_timesteps)
+            
+            # Log resources_map (availability of each resource type)
+            for i, availability in enumerate(resources_map):
+                # Assuming state_names correspond to resource names for simplicity in logging
+                res_name = self.state_names[i] if i < len(self.state_names) else f"resource_type_{i}"
+                self.writer.add_scalar(f"Resources/{res_name}_available", float(availability), self.num_timesteps)
 
         except Exception as e:
             print(f"⚠️ Logging error: {e}")
@@ -93,8 +100,28 @@ checkpoint_cb = CheckpointCallback(
 drive_cb = DriveLoggingCallback(base_env=base_env, state_names=state_names, writer=writer)
 
 # === TRAINING ===
-model.learn(total_timesteps=150_000, callback=[checkpoint_cb, drive_cb])
+model.learn(total_timesteps=500_000, callback=[checkpoint_cb, drive_cb])
 model.save(os.path.join(log_dir, "dqn_model_final"))
 writer.close()
 
 print(f"✅ Model saved in {log_dir}/dqn_model_final")
+
+# === EVALUATION & RENDERING ===
+print("Evaluating trained agent with rendering...")
+
+# Re-create the environment with render_mode="human"
+eval_env_raw = gym.make("LimitedResources2D-v0", config_path=config_path, drive_type=drive_type, render_mode="human")
+# Important: Wrap with FlattenObservation if the policy expects flattened obs
+eval_env = FlattenObservation(Monitor(eval_env_raw)) 
+
+obs, _ = eval_env.reset()
+for i in range(1000): # Evaluate for 1000 steps
+    action, _states = model.predict(obs, deterministic=True)
+    obs, reward, terminated, truncated, info = eval_env.step(action)
+    eval_env.render() # Render the environment
+    if terminated or truncated:
+        print(f"Episode finished after {i+1} steps.")
+        obs, _ = eval_env.reset()
+
+eval_env.close()
+print("Evaluation finished.")

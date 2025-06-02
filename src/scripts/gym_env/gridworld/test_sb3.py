@@ -12,8 +12,8 @@ import src.gymnasium_env  # your custom environment
 
 # === CONFIG ===
 config_path = "config/config.yaml"
-drive_type = "elliptic_drive"
-model_path = "runs/SB3_DQN_GridWorld_elliptic_drive_1234/dqn_model_final"
+drive_type = "base_drive"
+model_path = "runs/SB3_DQN_GridWorld_base_drive_m2_n2/dqn_model_final"
 output_dir = "sb3_test_results"
 videos_dir = os.path.join(output_dir, "videos")
 os.makedirs(videos_dir, exist_ok=True)

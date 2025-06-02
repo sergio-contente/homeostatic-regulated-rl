@@ -13,7 +13,7 @@ import src.gymnasium_env  # register LimitedResources2DEnv
 # === CONFIG ===
 config_path = "config/config.yaml"
 drive_type = "base_drive"
-model_path = "runs/SB3_DQN_LimitedResources2D_base_drive/dqn_model_final"  # Replace with actual path
+model_path = "runs/SB3_DQN_LimitedResources2D_base_drive_20250528-132604/dqn_model_final"  # Replace with actual path
 output_dir = "sb3_test_results"
 videos_dir = os.path.join(output_dir, "videos")
 os.makedirs(videos_dir, exist_ok=True)
@@ -58,6 +58,10 @@ while not done and step < max_steps:
     action, _ = model.predict(obs, deterministic=True)
     obs, reward, terminated, truncated, info = env.step(action)
     done = terminated or truncated
+
+    # Explicitly render the raw environment to update the Pygame window
+    if base_env.render_mode == "human":
+        base_env.render() # Calls _render_frame() which updates the Pygame display
 
     actions.append(action)
     rewards.append(reward)

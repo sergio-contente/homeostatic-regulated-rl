@@ -14,7 +14,7 @@ import src.gymnasium_env  # Ensure env is registered
 
 # === CONFIG ===
 config_path = "config/config.yaml"
-drive_type = "elliptic_drive"  # Change to "base_drive" or "interoceptive_drive"
+drive_type = "base_drive"  # Change to "base_drive" or "interoceptive_drive"
 
 current_time = datetime.now().strftime('%Y%m%d-%H%M%S')
 log_dir = os.path.join('runs', f'SB3_DQN_GridWorld_{drive_type}_{current_time}')
@@ -25,7 +25,7 @@ writer = SummaryWriter(log_dir)
 logger = configure(log_dir, ["stdout", "tensorboard"])
 
 # === ENVIRONMENT SETUP ===
-raw_env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type)
+raw_env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type, size=10)
 base_env = raw_env.unwrapped
 env = FlattenObservation(Monitor(raw_env))
 
