@@ -189,7 +189,7 @@ class LimitedResources1D(gym.Env):
         )
 
         # Terminação se algum estado interno estiver crítico
-        done = np.any(self.agent_info["internal_states"] < -1.0)
+        done = np.any(self.agent_info["internal_states"] < -1.0) or np.any(self.agent_info["internal_states"] > 1.0)    
 
         reward = self.get_reward()
         observation = self._get_obs()

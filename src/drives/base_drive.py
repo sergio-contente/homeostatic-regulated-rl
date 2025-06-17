@@ -71,11 +71,6 @@ class BaseDrive():
         """
         return self._internal_states_intake_rates[state_name]
     
-    def get_state_resources_regen_rate(self, state_name):
-        """
-        Get the resource regeneration rate for a specific internal state.
-        """
-        return self._internal_states_resources_regen[state_name]
     
     def get_array_optimal_states_values(self):
         """
@@ -187,6 +182,12 @@ class BaseDrive():
         """
         return list(self._optimal_internal_states_config.keys())
     
+    def get_regeneration_rate(self):
+        """
+        Get the regeneration rate for all internal states.
+        """
+        return self._internal_states_resources_regen
+    
     def apply_natural_decay(self, current_internal_states):
         """
         Apply natural decay to internal states based on loss rates.
@@ -202,23 +203,36 @@ class BaseDrive():
         
         return updated_states
     
-    def apply_intake(self, current_internal_states, action_states):
+    def get_intake_array(self, intake_resources):
+        """
+        Get the intake array for  intake resources.
+        """
+        intake_rates = self.get_array_intake_rates()
+        intake_resources = self._to_array(intake_resources)
+
+        # Apply intake only to states specified by intake_resources
+        intake = intake_rates * intake_resources
+        return intake
+    
+    def apply_intake(self, current_internal_states, intake_resources):
         """
         Apply intake to internal states based on action and intake rates.
         
         :param current_internal_states: Current internal state values.
-        :param action_states: Boolean array indicating which states to apply intake to.
+        :param intake_resources: Boolean array indicating which states to apply intake to.
         :return: Updated internal state values after intake.
         """
         current_states = self._to_array(current_internal_states)
-        intake_rates = self.get_array_intake_rates()
-        action_states = self._to_array(action_states)
-        
-        # Apply intake only to states specified by action_states
-        intake = intake_rates * action_states
+        intake = self.get_intake_array(intake_resources=intake_resources)
         updated_states = current_states + intake
         
         return updated_states
+    
+    def get_state_resources_regen_rate(self, state_name):
+        """
+        Get the resource regeneration rate for a specific internal state.
+        """
+        return self._internal_states_resources_regen[state_name]
     
     def apply_resource_regeneration(self, resource_available, resource_name):
         if not resource_available:
