@@ -29,14 +29,14 @@ class NormarlHomeostaticEnv(gym.Env):
         self.gamma = 0.1  # Softmax temperature
         
         # Social cost parameters
-        self.a = 5.0  # Base social cost
-        self.b = 0.005  # Resource scarcity multiplier
+        self.a = 1.0  # Base social cost
+        self.b = 0.1  # Resource scarcity multiplier
         
         # Belief about average consumption (Q̄ in NORMARL)
         self.perceived_social_norm = np.zeros(self.dimension_internal_states)
         
         # Resource stock (E in NORMARL)
-        self.initial_resource_stock = np.ones(self.dimension_internal_states) * 1000
+        self.initial_resource_stock = np.ones(self.dimension_internal_states) * 10
         self.resource_stock = self.initial_resource_stock.copy()
         self.resource_regeneration_rate = self.drive.get_array_resources_regeneration_rate()
         
@@ -52,7 +52,7 @@ class NormarlHomeostaticEnv(gym.Env):
                 shape=(self.dimension_internal_states,), 
                 dtype=np.float64
             ),
-            "resources_map": spaces.MultiBinary(self.dimension_internal_states),
+            # "resources_map": spaces.MultiBinary(self.dimension_internal_states),
             "perceived_social_norm": spaces.Box(
                 low=0, high=1.0,
                 shape=(self.dimension_internal_states,),
@@ -66,7 +66,7 @@ class NormarlHomeostaticEnv(gym.Env):
         self.agent_info = {
             "position": 0,
             "internal_states": np.zeros(self.dimension_internal_states, dtype=np.float64),
-            "resources_map": np.zeros(self.dimension_internal_states, dtype=np.int8),
+            # "resources_map": np.zeros(self.dimension_internal_states, dtype=np.int8),
             "perceived_social_norm": np.zeros(self.dimension_internal_states, dtype=np.float64)
         }
 
@@ -104,8 +104,8 @@ class NormarlHomeostaticEnv(gym.Env):
         for i, state_name in enumerate(state_names):
             self.resources_info[i] = {
                 "name": state_name,
-                "position": random_positions[i],
-                "available": True
+                "position": random_positions[i]
+                # "available": True
             }
 
     def compute_social_cost(self, intake):
@@ -120,13 +120,19 @@ class NormarlHomeostaticEnv(gym.Env):
         beta = self.beta
         
         # Resource scarcity factor
-        scarcity_factor = max(0, self.a - self.b * self.resource_stock)
+        scarcity_factor = np.maximum(0, self.a - self.b * self.resource_stock)
+
+        print("Scarcity factor: ", scarcity_factor)
+        print("Resource stock: ", self.resource_stock)
+        print("Intake: ", intake)
+        print("Belief: ", belief)
+        
         
         # Social cost for each resource type
         social_cost = 0
         for i in range(self.dimension_internal_states):
             if intake[i] > belief[i]:
-                social_cost += beta * (intake[i] - belief[i]) * scarcity_factor
+                social_cost += beta * (intake[i] - belief[i]) * scarcity_factor[i]
         
         return social_cost
 
@@ -158,9 +164,9 @@ class NormarlHomeostaticEnv(gym.Env):
         # Reset resource stock
         self.resource_stock = self.initial_resource_stock.copy()
         
-        # Reset resources
-        for resource in self.resources_info.values():
-            resource["available"] = True
+        # # Reset resources
+        # for resource in self.resources_info.values():
+        #     resource["available"] = True
         
         # Reset agent
         self.agent_info["position"] = self.np_random.choice(list(range(self.size)))
@@ -188,14 +194,14 @@ class NormarlHomeostaticEnv(gym.Env):
     def _get_obs(self):
         """Get observation for the agent"""
         # Resources map
-        resources_map = np.array([
-            int(resource["available"]) for resource in self.resources_info.values()
-        ], dtype=np.int8)
+        # resources_map = np.array([
+        #     int(resource["available"]) for resource in self.resources_info.values()
+        # ], dtype=np.int8)
         
         return {
             "position": self.agent_info["position"],
             "internal_states": self.agent_info["internal_states"],
-            "resources_map": resources_map,
+            # "resources_map": resources_map,
             "perceived_social_norm": self.perceived_social_norm
         }
 
@@ -225,11 +231,11 @@ class NormarlHomeostaticEnv(gym.Env):
         # 1. Apply natural decay first
         states_after_decay = self.drive.apply_natural_decay(self.agent_info["internal_states"])
 
-        for resource in self.resources_info.values():
-            resource["available"] = self.drive.apply_resource_regeneration(
-                resource["available"],
-                resource["name"]
-            )
+        # for resource in self.resources_info.values():
+        #     resource["available"] = self.drive.apply_resource_regeneration(
+        #         resource["available"],
+        #         resource["name"]
+        #     )
         # 2. Process MOVEMENT action
         current_position = self.agent_info["position"]
         new_position = current_position
@@ -254,21 +260,22 @@ class NormarlHomeostaticEnv(gym.Env):
         for i in range(self.dimension_internal_states):
             if action == 3 + i:
                 resource = self.resources_info[i]
-                if current_position == resource["position"] and resource["available"]:
+                # if current_position == resource["position"] and resource["available"]:
+                if current_position == resource["position"]:
                     intake_resources[i] = 1.0
-                    resource["available"] = False
+                    # resource["available"] = False
 
         new_internal_state = self.drive.apply_intake(states_after_decay, intake_resources)
         self.intake = self.drive.get_intake_array(intake_resources)
         
-        resources_map = np.array([
-            int(resource["available"]) for resource in self.resources_info.values()
-        ], dtype=np.int8)
+        # resources_map = np.array([
+        #     int(resource["available"]) for resource in self.resources_info.values()
+        # ], dtype=np.int8)
         
         # 4. Update agent state
         self.agent_info["position"] = new_position
         self.agent_info["internal_states"] = new_internal_state
-        self.agent_info["resources_map"] = resources_map
+        # self.agent_info["resources_map"] = resources_map
         
         # 5. Calculate reward and update drive
         reward = self._compute_reward(self.intake)
@@ -315,10 +322,12 @@ class NormarlHomeostaticEnv(gym.Env):
         """Check if episode should terminate"""
         # Check if resource stock is depleted
         if np.any(self.resource_stock <= 0):
+            print("Resource stock depleted")
             return True
         
         # Check if agent's internal states are too extreme
         if np.any(np.abs(self.agent_info["internal_states"]) > 1):
+            print("Internal states too extreme")
             return True
         
         return False
@@ -360,16 +369,23 @@ class NormarlHomeostaticEnv(gym.Env):
             
             x = resource["position"] * pix_square_size
             
-            if resource["available"]:
-                pygame.draw.rect(canvas, resource_color, 
-                               pygame.Rect(x, 50, pix_square_size, 50))
-                pygame.draw.rect(canvas, (0, 0, 0), 
-                               pygame.Rect(x, 50, pix_square_size, 50), width=2)
-            else:
-                pygame.draw.rect(canvas, (200, 200, 200), 
-                               pygame.Rect(x, 50, pix_square_size, 50))
-                pygame.draw.rect(canvas, (100, 100, 100), 
-                               pygame.Rect(x, 50, pix_square_size, 50), width=1)
+            # Always draw resources as available
+            pygame.draw.rect(canvas, resource_color, 
+                           pygame.Rect(x, 50, pix_square_size, 50))
+            pygame.draw.rect(canvas, (0, 0, 0), 
+                           pygame.Rect(x, 50, pix_square_size, 50), width=2)
+            
+            # # Draw based on availability
+            # if resource["available"]:
+            #     pygame.draw.rect(canvas, resource_color, 
+            #                    pygame.Rect(x, 50, pix_square_size, 50))
+            #     pygame.draw.rect(canvas, (0, 0, 0), 
+            #                    pygame.Rect(x, 50, pix_square_size, 50), width=2)
+            # else:
+            #     pygame.draw.rect(canvas, (200, 200, 200), 
+            #                    pygame.Rect(x, 50, pix_square_size, 50))
+            #     pygame.draw.rect(canvas, (100, 100, 100), 
+            #                    pygame.Rect(x, 50, pix_square_size, 50), width=1)
         
         # Draw agent
         agent_color = (50, 150, 255)
@@ -506,7 +522,7 @@ if __name__ == '__main__':
         config_path=config_path,
         drive_type=drive_type,
         learning_rate=learning_rate,
-        size=10,
+        size=1,
         render_mode="human"
     )
     
