@@ -209,7 +209,7 @@ class NormarlHomeostaticEnv(gym.Env):
         """Get info dictionary with agent's state"""
         return {
             "agent_info": self.agent_info.copy(),
-            "intake": self.intake.copy()
+            "last_intake": self.intake.copy()
         }
     def step(self, action, avg_intake):
         """
@@ -278,7 +278,7 @@ class NormarlHomeostaticEnv(gym.Env):
         # self.agent_info["resources_map"] = resources_map
         
         # 5. Calculate reward and update drive
-        reward = self._compute_reward(self.intake)
+        reward = self._compute_reward(self.intake) * 100
         
         # 7. Update global state
         self._update_global_environment(self.intake,avg_intake)
@@ -304,7 +304,7 @@ class NormarlHomeostaticEnv(gym.Env):
         print(f"Homeostatic reward: {homeostatic_reward}, Social cost: {social_cost}")
         
         # Total reward
-        return homeostatic_reward - social_cost
+        return homeostatic_reward - social_cost * 10
 
     def _update_global_environment(self, intake, avg_intake):
         """Update global environment state"""
@@ -516,8 +516,8 @@ if __name__ == '__main__':
     drive_type = "base_drive"
     learning_rate = 0.1
     n_agents = 2
-    
-    # Create single environment
+    n_trials = 1000
+
     env = NormarlHomeostaticEnv(
         config_path=config_path,
         drive_type=drive_type,
@@ -525,66 +525,40 @@ if __name__ == '__main__':
         size=1,
         render_mode="human"
     )
-    
+
     env.beta = 0.8
     env.alpha = learning_rate
-    
+
     obs, info = env.reset()
-    
-    # Track each agent's intake separately
+
     agents_intake_history = [[] for _ in range(n_agents)]
-    current_agent = 0
-    
-    print(f"Starting single-env simulation with {n_agents} agents taking turns")
-    
-    for step in range(1000):
-        # Calculate average intake from all agents' recent history
-        if step > n_agents:  # Wait until each agent has acted at least once
-            # Get recent intakes from all agents
-            recent_intakes = []
-            for agent_id in range(n_agents):
-                if len(agents_intake_history[agent_id]) > 0:
-                    # Take last intake from each agent
-                    recent_intakes.append(agents_intake_history[agent_id][-1])
-            
-            if recent_intakes:
-                avg_intake = np.mean(recent_intakes, axis=0)
-            else:
-                avg_intake = 0
-        else:
-            avg_intake = 0
-        
-        # Current agent takes action
-        action = env.action_space.sample()
-        obs, reward, done, truncated, info = env.step(action, avg_intake)
-        
-        # Store this agent's intake
-        agent_intake = info["intake"]
-        agents_intake_history[current_agent].append(agent_intake.copy())
-        
-        # Print information
-        if step % (50 * n_agents) == 0:  # Every 50 rounds of all agents
-            print(f"\nStep {step} (Agent {current_agent} turn):")
-            print(f"Resource stock: {env.resource_stock}")
-            print(f"Current intake: {agent_intake}")
-            
-            # Calculate and show average across all agents
-            if step > n_agents:
-                all_recent_intakes = [agents_intake_history[i][-1] 
-                                    for i in range(n_agents) 
-                                    if len(agents_intake_history[i]) > 0]
-                if all_recent_intakes:
-                    current_avg = np.mean(all_recent_intakes, axis=0)
-                    print(f"Average intake across agents: {current_avg}")
-            
-            print(f"Perceived social norm: {env.perceived_social_norm}")
-        
-        # Switch to next agent
-        current_agent = (current_agent + 1) % n_agents
-        
-        if done:
-            print(f"\nEpisode ended at step {step}")
-            break
-    
+    avg_intake = np.zeros(env.dimension_internal_states)
+
+    print(f"Starting simulation with {n_agents} agents in {n_trials} trials.\n")
+
+    for trial in range(n_trials):
+        trial_intakes = []
+
+        for current_agent in range(n_agents):
+            action = env.action_space.sample()
+            obs, reward, done, truncated, info = env.step(action, avg_intake)
+
+            agent_intake = info["last_intake"]
+            agents_intake_history[current_agent].append(agent_intake.copy())
+            trial_intakes.append(agent_intake.copy())
+
+            print(f"[Trial {trial}] Agent {current_agent} intake: {agent_intake}")
+
+            if done:
+                print(f"\nEpisode ended at trial {trial}, agent {current_agent}")
+                env.close()
+                exit()
+
+        # Atualiza a média após todos os agentes agirem
+        avg_intake = np.mean(trial_intakes, axis=0)
+
+        print(f"[Trial {trial}] Average intake: {avg_intake}")
+        print(f"[Trial {trial}] Perceived norm: {env.perceived_social_norm}\n")
+
     env.close()
-    print("Single-env simulation finished.")
+    print("Simulation finished.")
