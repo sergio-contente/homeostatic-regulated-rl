@@ -154,7 +154,7 @@ class NormarlHomeostaticEnv(gym.Env):
         """
         self.resource_stock = (
             (1 + self.resource_regeneration_rate) * self.resource_stock - 
-            10 * total_intake
+            2 * total_intake
         )
         self.resource_stock = np.maximum(0, self.resource_stock)
 

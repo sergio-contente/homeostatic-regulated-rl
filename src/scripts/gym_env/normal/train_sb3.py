@@ -160,12 +160,38 @@ def create_normarl_env(config_path="config/config.yaml", n_agents=2):
             #ppo_4 = 3e-4
         #regen = 2e-6
             #ppo_5 = 0.8
-            #ppo_6 = 0.5
-            #ppo_7 = 0.1
-            #ppo_8 = 3e-4
+            #ppo_6 = 0.8 but 10*total_intake
+            #ppo_7 = 0.8 but 5*total_intake
+            #ppo_8 = 0.1 but 5*total_intake
+        #regen = 2e-4
+            #ppo_9 = 0.8 but 5*total_intake
+            #ppo_10 = 0.8 but 2.5*total_intake
+            #ppo_11 = 0.8 but 1.25*total_intake
+            #ppo_12 = 0.5 but 1.25*total_intake
+            #ppo_13 = 0.1 but 1.25*total_intake
+            #ppo_14 = 0 but 1.25*total_intake
+        #regen = 2e-6
+            #ppo_15 = 0.8 but 1.25*total_intake
+            #ppo_16 = 0 but 1.25*total_intake
+            #ppo_17 = 0 but 2*total_intake
+            #ppo_18 = 0 but 2*total_intake with more timesteps
+            #ppo_19 = 0 but 2*total_intake with decay rate 0.01
+            #ppo_20 = pp0_17
+            #ppo_21 = 0 but 2*total_intake with decay rate 0.006
+            #ppo_22 = 0 but 2*total_intake with decay rate 0.003 and 20000 timesteps
+            #ppo_23 = 0 but 2*total_intake with decay rate 0.0045 and 20000 timesteps
+        # regen = 2e-6 and decay 0.006
+           #ppo_24 = 0.8 but 2*total_intake
+           #ppo_25 = 0.6 but 2*total_intake
+           #ppo_26 = 0.3 but 2*total_intake
+           #ppo_27 = ppo_26
+           #ppo_28 = 0.1 but 2*total_intake
+           #ppo_29 = 0.2 but 2*total_intake
+           #ppo_30 = 0.2 but 2*total_intake
+
             
         learning_rate = 3e-4
-        beta = 0.8
+        beta = 0.2
         env = NormarlHomeostaticEnv(
             config_path=config_path,
             drive_type="base_drive",
@@ -233,7 +259,7 @@ def train_ppo_normarl(total_timesteps=20000, n_envs=1, n_agents=2, config_path="
 
 if __name__ == "__main__":
     config = {
-        'total_timesteps': 10000,
+        'total_timesteps': 20000,
         'n_envs': 1,  # Debug mode
         'n_agents': 2,
         'config_path': 'config/config.yaml'

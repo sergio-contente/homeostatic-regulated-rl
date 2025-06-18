@@ -3,7 +3,7 @@ global_params: # Every drive will get one of these
   optimal_internal_state:
     food: 
       value:  0
-      loss: 0.003
+      loss: 0.006
       intake: 0.1
       regeneration: 2e-6
     # water: 
