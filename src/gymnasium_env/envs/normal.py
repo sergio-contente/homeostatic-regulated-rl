@@ -13,7 +13,7 @@ class NormarlHomeostaticEnv(gym.Env):
     """
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
-    def __init__(self, config_path, drive_type, learning_rate, render_mode=None, size=10):
+    def __init__(self, config_path, drive_type, learning_rate, beta, render_mode=None, size=10):
         self.param_manager = ParameterHandler(config_path)
         self.drive_type = drive_type
         self.size = size  # The size of the 1D grid
@@ -24,19 +24,19 @@ class NormarlHomeostaticEnv(gym.Env):
         self.dimension_internal_states = self.drive.get_internal_state_dimension()
         
         # NORMARL parameters
-        self.beta = 0.8  # Norm internalization strength
+        self.beta = beta  # Norm internalization strength
         self.alpha = learning_rate  # Learning rate
         self.gamma = 0.1  # Softmax temperature
         
         # Social cost parameters
         self.a = 1.0  # Base social cost
-        self.b = 0.1  # Resource scarcity multiplier
+        self.b = 0.5  # Resource scarcity multiplier
         
         # Belief about average consumption (Q̄ in NORMARL)
         self.perceived_social_norm = np.zeros(self.dimension_internal_states)
         
         # Resource stock (E in NORMARL)
-        self.initial_resource_stock = np.ones(self.dimension_internal_states) * 10
+        self.initial_resource_stock = np.ones(self.dimension_internal_states) * 2
         self.resource_stock = self.initial_resource_stock.copy()
         self.resource_regeneration_rate = self.drive.get_array_resources_regeneration_rate()
         
@@ -154,7 +154,7 @@ class NormarlHomeostaticEnv(gym.Env):
         """
         self.resource_stock = (
             (1 + self.resource_regeneration_rate) * self.resource_stock - 
-            total_intake
+            10 * total_intake
         )
         self.resource_stock = np.maximum(0, self.resource_stock)
 
@@ -514,7 +514,7 @@ class NormarlHomeostaticEnv(gym.Env):
 if __name__ == '__main__':
     config_path = "config/config.yaml"
     drive_type = "base_drive"
-    learning_rate = 0.1
+    learning_rate = 0.02
     n_agents = 2
     n_trials = 1000
 

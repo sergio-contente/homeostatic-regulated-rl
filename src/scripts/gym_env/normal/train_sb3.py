@@ -153,21 +153,33 @@ class NormarlCallback(BaseCallback):
 
 def create_normarl_env(config_path="config/config.yaml", n_agents=2):
     def _init():
+        #regen = 2e-4
+            #ppo_1 = 0.8
+            #ppo_2 = 0.5
+            #ppo_3 = 0.1
+            #ppo_4 = 3e-4
+        #regen = 2e-6
+            #ppo_5 = 0.8
+            #ppo_6 = 0.5
+            #ppo_7 = 0.1
+            #ppo_8 = 3e-4
+            
+        learning_rate = 3e-4
+        beta = 0.8
         env = NormarlHomeostaticEnv(
             config_path=config_path,
             drive_type="base_drive",
-            learning_rate=0.1,
+            learning_rate=learning_rate,
+            beta=beta,
             size=1,
             render_mode=None
         )
-        env.beta = 0.8
-        env.alpha = 0.1
         env = MultiAgentNormarlWrapper(env, n_agents=n_agents)
         env = Monitor(env)
         return env
     return _init
 
-def train_ppo_normarl(total_timesteps=200000, n_envs=1, n_agents=2, config_path="config/config.yaml", save_path="./normarl_models/", log_path="./normarl_logs/"):
+def train_ppo_normarl(total_timesteps=20000, n_envs=1, n_agents=2, config_path="config/config.yaml", save_path="./normarl_models/", log_path="./normarl_logs/"):
     os.makedirs(save_path, exist_ok=True)
     os.makedirs(log_path, exist_ok=True)
 
@@ -221,7 +233,7 @@ def train_ppo_normarl(total_timesteps=200000, n_envs=1, n_agents=2, config_path=
 
 if __name__ == "__main__":
     config = {
-        'total_timesteps': 200000,
+        'total_timesteps': 10000,
         'n_envs': 1,  # Debug mode
         'n_agents': 2,
         'config_path': 'config/config.yaml'
