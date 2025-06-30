@@ -25,6 +25,16 @@ class MultiAgentNormarlWrapper(gym.Wrapper):
         self.episode_step = 0
         self.max_episode_steps = 200
 
+        # --- Fix Observation Space ---
+        old_space = self.env.observation_space
+        assert isinstance(old_space, gym.spaces.Dict), "Original observation space must be a Dict"
+
+        new_spaces = old_space.spaces.copy()
+        new_spaces['agent_id'] = spaces.Discrete(self.n_agents)
+        new_spaces['episode_step'] = spaces.Box(low=0, high=self.max_episode_steps, shape=(1,), dtype=np.int32)
+        self.observation_space = spaces.Dict(new_spaces)
+        # ---------------------------
+
         self.agents_intake_history = [[] for _ in range(n_agents)]
         self.trial_intakes = []
         self.avg_intake = np.zeros(self.env.dimension_internal_states)
@@ -45,7 +55,7 @@ class MultiAgentNormarlWrapper(gym.Wrapper):
         self.agent_consumptions = [[] for _ in range(self.n_agents)]
 
         obs["agent_id"] = self.current_agent
-        obs["episode_step"] = self.episode_step
+        obs["episode_step"] = np.array([self.episode_step], dtype=np.int32)
         return obs, info
 
     def step(self, action):
@@ -73,7 +83,7 @@ class MultiAgentNormarlWrapper(gym.Wrapper):
             print(f"Episode ended due to max steps ({self.max_episode_steps})")
 
         obs["agent_id"] = self.current_agent
-        obs["episode_step"] = self.episode_step
+        obs["episode_step"] = np.array([self.episode_step], dtype=np.int32)
 
         if done:
             info.update(self._get_episode_stats())
@@ -187,11 +197,18 @@ def create_normarl_env(config_path="config/config.yaml", n_agents=2):
            #ppo_27 = ppo_26
            #ppo_28 = 0.1 but 2*total_intake
            #ppo_29 = 0.2 but 2*total_intake
-           #ppo_30 = 0.2 but 2*total_intake
+           #ppo_30 = 0.2 but 2*total_intake with social cost 1x
+           #ppo_31 = 0.8 but 2*total_intake with social cost 1x
 
             
-        learning_rate = 3e-4
-        beta = 0.2
+        learning_rate = 3e-4 
+        # learning rate of the other agent belief is really low
+        # put more agents in the training to analyse the distribution of beliefs
+        # try for 10 agents to begin -> visualize and aggregate the population methods
+        # visualize the society and not single agents
+        # It can be a solution for a coordination problem <-> we have a drive and a social cost, we want them to coordinate them with each other
+        
+        beta = 0.8
         env = NormarlHomeostaticEnv(
             config_path=config_path,
             drive_type="base_drive",
