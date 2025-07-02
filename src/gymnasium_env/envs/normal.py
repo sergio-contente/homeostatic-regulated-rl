@@ -3,6 +3,7 @@ import pygame
 import gymnasium as gym
 from gymnasium import spaces
 from src.utils.get_params import ParameterHandler
+from src.utils.resource_manager import GlobalResourceManager
 
 
 class NormarlHomeostaticEnv(gym.Env):
@@ -23,6 +24,9 @@ class NormarlHomeostaticEnv(gym.Env):
         self.drive = self.param_manager.create_drive(drive_type)
         self.dimension_internal_states = self.drive.get_internal_state_dimension()
         
+        # ✅ Create global resource manager for shared resource regeneration
+        self.resource_manager = GlobalResourceManager(config_path, drive_type)
+        
         # NORMARL parameters
         self.beta = beta  # Norm internalization strength
         self.alpha = learning_rate  # Learning rate
@@ -38,7 +42,8 @@ class NormarlHomeostaticEnv(gym.Env):
         # Resource stock (E in NORMARL)
         self.initial_resource_stock = np.ones(self.dimension_internal_states) * 2
         self.resource_stock = self.initial_resource_stock.copy()
-        self.resource_regeneration_rate = self.drive.get_array_resources_regeneration_rate()
+        # ✅ Get regeneration rates from global resource manager
+        self.resource_regeneration_rate = self.resource_manager.get_resource_stock_regeneration_array()
         
         # Action space
         num_actions = 3 + self.dimension_internal_states
@@ -152,11 +157,10 @@ class NormarlHomeostaticEnv(gym.Env):
         E(t+1) = (1 + δ) * E(t) - Σ(Qi)
         Where Q = K (total intake)
         """
-        self.resource_stock = (
-            (1 + self.resource_regeneration_rate) * self.resource_stock - 
-            2 * total_intake
+        # ✅ Use global resource manager for consistent regeneration
+        self.resource_stock = self.resource_manager.update_resource_stock(
+            self.resource_stock, 2 * total_intake
         )
-        self.resource_stock = np.maximum(0, self.resource_stock)
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)

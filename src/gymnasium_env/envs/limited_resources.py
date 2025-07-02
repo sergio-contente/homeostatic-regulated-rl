@@ -7,6 +7,7 @@ import gymnasium as gym
 from gymnasium import spaces
 
 from src.utils.get_params import ParameterHandler
+from src.utils.resource_manager import GlobalResourceManager
 
 
 class LimitedResources1D(gym.Env):
@@ -18,6 +19,9 @@ class LimitedResources1D(gym.Env):
         self.size = size  # The size of the square grid
         self.window_size = 512  # The size of the PyGame window
         self.dimension_internal_states = self.drive.get_internal_state_dimension()
+        
+        # ✅ Create global resource manager for shared resource regeneration
+        self.resource_manager = GlobalResourceManager(config_path, drive_type)
 
 
         # Observations are dictionaries with the agent's and the target's location.
@@ -142,11 +146,10 @@ class LimitedResources1D(gym.Env):
     def step(self, action):
         self.previous_internal_states = np.array(self.agent_info["internal_states"])
 
-        for resource in self.resources_info.values():
-            resource["available"] = self.drive.apply_resource_regeneration(
-                resource["available"],
-                resource["name"]
-            )
+        # ✅ Apply global resource regeneration (replaces per-agent regeneration)
+        self.resources_info = self.resource_manager.apply_resource_regeneration(
+            self.resources_info
+        )
 
         # Decaimento natural dos estados internos
         states_after_cost = self.drive.apply_natural_decay(self.previous_internal_states)

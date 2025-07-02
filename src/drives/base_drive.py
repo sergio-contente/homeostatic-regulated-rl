@@ -40,6 +40,8 @@ class BaseDrive():
             for state_name, state_config in optimal_internal_states_config.items()
         }
 
+        # ✅ NOTE: Resource regeneration moved to GlobalResourceManager
+        # Keep regeneration config for backwards compatibility but don't use in drive logic
         self._internal_states_resources_regen = {
             state_name: state_config['regeneration']
             for state_name, state_config in optimal_internal_states_config.items()
@@ -102,7 +104,17 @@ class BaseDrive():
     def get_array_resources_regeneration_rate(self):
         """
         Convert resource regeneration rates to a numpy array.
+        
+        ⚠️  DEPRECATED: Use GlobalResourceManager.get_resource_stock_regeneration_array() instead.
+        This method is kept for backwards compatibility only.
         """
+        import warnings
+        warnings.warn(
+            "get_array_resources_regeneration_rate() is deprecated. "
+            "Use GlobalResourceManager.get_resource_stock_regeneration_array() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         rates = []
         for state_name in self._internal_states_resources_regen:
             rates.append(self._internal_states_resources_regen[state_name])
@@ -185,7 +197,17 @@ class BaseDrive():
     def get_regeneration_rate(self):
         """
         Get the regeneration rate for all internal states.
+        
+        ⚠️  DEPRECATED: Use GlobalResourceManager.get_regeneration_rates() instead.
+        This method is kept for backwards compatibility only.
         """
+        import warnings
+        warnings.warn(
+            "get_regeneration_rate() is deprecated. "
+            "Use GlobalResourceManager.get_regeneration_rates() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self._internal_states_resources_regen
     
     def apply_natural_decay(self, current_internal_states):
@@ -231,10 +253,37 @@ class BaseDrive():
     def get_state_resources_regen_rate(self, state_name):
         """
         Get the resource regeneration rate for a specific internal state.
+        
+        ⚠️  DEPRECATED: Use GlobalResourceManager.get_regeneration_rate() instead.
+        This method is kept for backwards compatibility only.
         """
+        import warnings
+        warnings.warn(
+            "get_state_resources_regen_rate() is deprecated. "
+            "Use GlobalResourceManager.get_regeneration_rate() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         return self._internal_states_resources_regen[state_name]
     
     def apply_resource_regeneration(self, resource_available, resource_name):
+        """
+        Apply resource regeneration to a single resource.
+        
+        ⚠️  DEPRECATED: This method should NOT be called from individual agent drives!
+        Use GlobalResourceManager.apply_resource_regeneration() or 
+        apply_resource_regeneration_single() at the environment level instead.
+        
+        This creates inconsistent resource states in multi-agent environments.
+        """
+        import warnings
+        warnings.warn(
+            "apply_resource_regeneration() is deprecated and should not be used! "
+            "Use GlobalResourceManager.apply_resource_regeneration() at environment level. "
+            "Per-agent resource regeneration creates inconsistent shared resource states.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         if not resource_available:
             random_number = np.random.uniform(0, 1)
             if random_number < self.get_state_resources_regen_rate(resource_name):

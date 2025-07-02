@@ -7,6 +7,7 @@ import gymnasium as gym
 from gymnasium import spaces
 
 from src.utils.get_params import ParameterHandler
+from src.utils.resource_manager import GlobalResourceManager
 
 
 class LimitedResources2DEnv(gym.Env):
@@ -18,6 +19,9 @@ class LimitedResources2DEnv(gym.Env):
         self.size = size  # The size of the square grid
         self.window_size = 600  # Increased window size for better visibility
         self.dimension_internal_states = self.drive.get_internal_state_dimension()
+        
+        # ✅ Create global resource manager for shared resource regeneration
+        self.resource_manager = GlobalResourceManager(config_path, drive_type)
 
 
         # Observations are dictionaries with the agent's and the target's location.
@@ -226,12 +230,10 @@ class LimitedResources2DEnv(gym.Env):
                     )
                     resource_data["available"] = False # Mark resource as unavailable after consumption
         
-        # Apply resource regeneration
-        for resource_idx, resource_data in self.resources_info.items():
-            resource_data["available"] = self.drive.apply_resource_regeneration(
-                resource_data["available"],
-                resource_data["name"]
-            )
+        # ✅ Apply global resource regeneration (replaces per-agent regeneration)
+        self.resources_info = self.resource_manager.apply_resource_regeneration(
+            self.resources_info
+        )
         
         # Update the resources_map for observation based on current availability
         current_resources_availability = np.array([
