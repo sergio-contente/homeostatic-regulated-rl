@@ -65,7 +65,6 @@ class HomeostaticAgent:
         
         # Memory for learning
         self.intake_history = []
-        self.observed_behaviors = []
         
         # Track agent's own consumption for social learning
         self.last_intake = np.zeros(self.dimension_internal_states, dtype=np.float64)
@@ -138,7 +137,7 @@ class HomeostaticAgent:
         social_cost = 0.0
         
         for i in range(self.dimension_internal_states):
-            if intake[i] > self.perceived_social_norm[i]:
+            if intake[i] >= self.perceived_social_norm[i]:
                 excess_consumption = intake[i] - self.perceived_social_norm[i]
                 social_cost += self.beta * excess_consumption * resource_scarcity[i]
                 
@@ -159,15 +158,6 @@ class HomeostaticAgent:
             self.social_learning_rate * observed_average_intake
         )
                 
-    def observe_other_agent_behavior(self, other_agent_intake: np.ndarray):
-        """
-        Observe another agent's consumption behavior.
-        
-        Args:
-            other_agent_intake: Intake array from another agent
-        """
-        self.observed_behaviors.append(other_agent_intake.copy())
-        
     def get_state_info(self) -> Dict[str, Any]:
         """
         Get comprehensive state information for debugging/logging.
@@ -224,7 +214,6 @@ class HomeostaticAgent:
         self.perceived_social_norm = np.zeros(self.dimension_internal_states, dtype=np.float64)
         self.last_intake = np.zeros(self.dimension_internal_states, dtype=np.float64)
         self.intake_history = []
-        self.observed_behaviors = []
         
         # Reset drive
         initial_drive = self.drive.compute_drive(self.internal_states)

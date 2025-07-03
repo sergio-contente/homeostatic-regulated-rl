@@ -318,13 +318,12 @@ class NormalHomeostaticEnv(AECEnv):
         Returns:
             np.ndarray: Scarcity factor for each resource type
         """
-        # NORMARL-style scarcity: max(0, a - b*E)
+        # NORMARL-style scarcity: max{0, (a - b.Et)}
         a = 1.0  # Base social cost
         b = 0.5  # Resource scarcity multiplier
         
-        # Normalize resource stock to [0, 1] range
-        normalized_stock = self.resource_stock / self.initial_resource_stock
-        scarcity = np.maximum(0, a - b * normalized_stock)
+        # Use absolute resource stock (not normalized) as per NORMARL formula
+        scarcity = np.maximum(0, a - b * self.resource_stock)
         
         return scarcity
 
@@ -382,12 +381,6 @@ class NormalHomeostaticEnv(AECEnv):
             for agent_id in self.agents:
                 agent = self.homeostatic_agents[agent_id]
                 agent.update_social_norm_perception(avg_intake)
-                
-                # Let agents observe each other's behavior
-                for other_agent_id in self.agents:
-                    if other_agent_id != agent_id:
-                        other_agent = self.homeostatic_agents[other_agent_id]
-                        agent.observe_other_agent_behavior(other_agent.last_intake)
 
     def _check_resource_regeneration(self):
         """Apply resource regeneration if needed."""
