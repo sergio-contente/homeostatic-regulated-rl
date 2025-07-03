@@ -35,9 +35,10 @@ class NormalHomeostaticEnv(AECEnv):
         self.global_resource_manager = GlobalResourceManager(config_path, drive_type)
         
         # Resource stock (NORMARL-style shared resource pool)
-        self.initial_resource_stock = np.ones(number_resources) * 2
+        self.initial_resource_stock = np.ones(number_resources) * 3
         self.resource_stock = self.initial_resource_stock.copy()
         self.resource_regeneration_rate = self.global_resource_manager.get_resource_stock_regeneration_array()
+        print(f"🔄 Resource regeneration rate: {self.resource_regeneration_rate}")
         
         # Agent identification
         self.possible_agents = [f"agent_{i}" for i in range(n_agents)]
@@ -196,38 +197,87 @@ class NormalHomeostaticEnv(AECEnv):
         # Reset cumulative rewards for current agent
         self._cumulative_rewards[current_agent_id] = 0
 
+        print(f"🔄 Applying natural decay to current agent's internal states")
+        print(f"🔄 Current agent's internal states: {current_agent.internal_states}")
+        old_internal_states = current_agent.internal_states.copy()
         # 1. Apply natural decay to current agent's internal states
         current_agent.apply_natural_decay()
+        print(f"🔄 Current agent's internal states after natural decay: {current_agent.internal_states}")
 
         # 2. Execute action through action function
         action_result = action_func.execute_action(action)
+        print(f"🔄 Executing action: {action_result}")
         
-        # 3. Calculate rewards for current agent
-        reward = 0.0
-        if action_result["valid"]:
-            # Homeostatic reward (drive reduction)
-            homeostatic_reward = current_agent.compute_homeostatic_reward()
-            
-            # Social cost (if consumption occurred)
-            social_cost = 0.0
-            if action_result["resource_consumed"]:
-                intake = action_result["intake"]
-                # Calculate resource scarcity for social cost
-                resource_scarcity = self._compute_resource_scarcity()
-                social_cost = current_agent.compute_social_cost(intake, resource_scarcity)
-            
-            # Combined reward
-            reward = homeostatic_reward - social_cost
+        # 3. Update agent position based on action result
+        new_position = action_result["agent_new_position"]
+        current_agent.update_position(new_position)
+        print(f"🔄 Agent moved to position: {new_position}")
+        
+        # 4. Validate and consume resources
+        print(f"📦 Consuming resources: {action_result['resources_to_consume']}")
+        resources_to_consume = action_result["resources_to_consume"]
+        print(f"📦 Resources to consume: {resources_to_consume}")
+        
+        # The actions.py already checked position, now just validate stock and deduct
+        actual_consumption = np.zeros_like(resources_to_consume)
+        resource_consumed = False
+        
+        for i, amount in enumerate(resources_to_consume):
+            if amount > 0:
+                # Check if global resource stock has enough
+                available_amount = min(amount, self.resource_stock[i])
+                if available_amount > 0:
+                    actual_consumption[i] = available_amount
+                    # Deduct from global resource stock
+                    self.resource_stock[i] -= available_amount
+                    resource_consumed = True
+                    print(f"📦 Consumed {available_amount} of resource {i}")
+                else:
+                    print(f"📦 No resource {i} available in global stock")
+        
+        # Apply actual consumption to agent
+        if resource_consumed:
+            last_intake, states_before = current_agent.consume_resource(actual_consumption)
         else:
-            # Penalty for invalid actions
-            reward = -0.1
+            last_intake = np.zeros(self.dimension_internal_states)
+            states_before = old_internal_states.copy()  # States BEFORE natural decay
+        print(f"📦 Actual consumption: {actual_consumption}")
+        print(f"📦 Last intake: {last_intake}")
+        print(f"📦 States before: {states_before}")
+        print(f"📦 Current agent's internal states after consumption: {current_agent.internal_states}")
+        
+        # 5. Calculate rewards for current agent
+        reward = 0.0
+        
+        # Homeostatic reward (drive reduction)
+        print(f"🏥 Computing homeostatic reward")
+        homeostatic_reward = current_agent.compute_homeostatic_reward(states_before)
+        print(f"🏥 Homeostatic reward: {homeostatic_reward}")
+        
+        # Social cost (if consumption occurred)
+        social_cost = 0.0
+        if resource_consumed:
+            # Use actual intake for social cost calculation
+            resource_scarcity = self._compute_resource_scarcity()
+            social_cost = current_agent.compute_social_cost(last_intake, resource_scarcity)
+            print(f"👥 Social cost: {social_cost}")
+        
+        # Combined reward
+        reward = homeostatic_reward - social_cost
+        
+        # Small penalty for invalid actions (trying to consume when no stock available)
+        if np.sum(resources_to_consume) > np.sum(actual_consumption):
+            reward -= 0.1
+            print(f"⚠️  Invalid action penalty applied (no stock available)")
 
         # Store reward for current agent
         self.rewards[current_agent_id] = reward
 
-        # 4. If this is the last agent in the round, update global environment
+        # 6. If this is the last agent in the round, update global environment
         if self._agent_selector.is_last():
+            print(f"🌍 Resource stock before update: {self.resource_stock}")
             self._update_global_environment()
+            print(f"🌍 Resource stock after update: {self.resource_stock}")
             self._update_social_norms()
             self._check_resource_regeneration()
             
@@ -247,17 +297,17 @@ class NormalHomeostaticEnv(AECEnv):
                 if agent_id != current_agent_id:
                     self.rewards[agent_id] = 0
 
-        # 5. Update observations for all agents
+        # 7. Update observations for all agents
         for agent_id in self.agents:
             self.observations[agent_id] = self.observation_functions[agent_id]()
 
-        # 6. Move to next agent
+        # 8. Move to next agent
         self.agent_selection = self._agent_selector.next()
 
-        # 7. Accumulate rewards
+        # 9. Accumulate rewards
         self._accumulate_rewards()
 
-        # 8. Render if needed
+        # 10. Render if needed
         if self.render_mode == "human":
             self.render()
 
@@ -280,20 +330,41 @@ class NormalHomeostaticEnv(AECEnv):
 
     def _update_global_environment(self):
         """Update global environment state after all agents have acted."""
-        # Update resource stock based on consumption
+        # Update resource stock based on actual resource consumption
+        # Note: We need to track actual resource units consumed, not intake benefits
         total_consumption = np.zeros(self.dimension_internal_states)
         
+        # For now, we'll use a simple approach: count consumption actions
+        # Each consumption action (action 3+i) consumes 1.0 resource unit
+        # This is a simplification - ideally we'd track actual consumption per agent
         for agent_id in self.agents:
             agent = self.homeostatic_agents[agent_id]
-            total_consumption += agent.last_intake
+            # If agent consumed anything (last_intake > 0), assume they consumed 1.0 resource unit
+            if np.any(agent.last_intake > 0):
+                # Find which resource was consumed and add 1.0 to that resource
+                consumed_resource = np.where(agent.last_intake > 0)[0]
+                for resource_idx in consumed_resource:
+                    total_consumption[resource_idx] += 1.0
         
-        # Update resource stock using NORMARL mechanism
-        self.resource_stock = self.global_resource_manager.update_resource_stock(
-            self.resource_stock, total_consumption
-        )
+        print(f"🌍 Total consumption this round: {total_consumption}")
+        
+        # Store stock before update to calculate regeneration
+        stock_before = self.resource_stock.copy()
+        
+        # Apply NORMARL equation: Et+1 = (1 + δ)Et - ΣQi,t
+        # where δ is the natural regeneration rate and ΣQi,t is total consumption
+        regeneration_rate = self.resource_regeneration_rate[0]  # Get from config file
+        self.resource_stock = (1 + regeneration_rate) * stock_before - total_consumption
         
         # Ensure resource stock doesn't go negative
         self.resource_stock = np.maximum(0, self.resource_stock)
+        
+        # Clamp resource stock to initial levels (prevent exceeding maximum)
+        self.resource_stock = np.minimum(self.resource_stock, self.initial_resource_stock)
+        
+        print(f"🌍 Stock before regeneration: {stock_before}")
+        print(f"🌍 Stock after regeneration: {self.resource_stock}")
+        print(f"🌍 Regeneration rate (δ): {regeneration_rate}")
 
     def _update_social_norms(self):
         """Update each agent's perception of social norms based on observed behavior."""
@@ -435,8 +506,9 @@ def main():
     for agent_id in env.agents:
         action_space = env.action_space(agent_id)
         action_func = env.action_functions[agent_id]
-        action_info = action_func.get_action_info()
-        print(f"  {agent_id}: {action_space.n} actions - {action_info['action_descriptions']}")
+        #action_info = action_func.get_action_info()
+        #print(f"  {agent_id}: {action_space.n} actions - {action_info['action_descriptions']}")
+        print(f"  {agent_id}: {action_space.n} actions")
     
     # Run simulation for several steps
     print("\n🚀 Running simulation...")
@@ -451,18 +523,9 @@ def main():
         current_agent = env.homeostatic_agents[current_agent_id]
         action_func = env.action_functions[current_agent_id]
         
-        # Get valid actions
-        valid_actions = action_func.get_valid_actions()
-        
-        # Sample action using agent's intelligent action selection
-        action = action_func.sample_action(temperature=1.0)
-        
-        # Get action description
-        action_info = action_func.decode_action(action)
-        
-        print(f"Step {step_count+1}: Agent {current_agent_id} (pos={current_agent.position}, drive={current_agent.get_current_drive():.3f})")
-        print(f"  Action: {action} - {action_info}")
-        print(f"  Valid actions: {np.where(valid_actions)[0].tolist()}")
+        # Choose a random action for testing
+        action = env.np_random.integers(0, action_func.action_space().n)
+        print(f"Step {step_count}: {current_agent_id} taking action {action}")
         
         # Execute step
         env.step(action)

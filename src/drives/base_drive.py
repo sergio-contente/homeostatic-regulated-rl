@@ -161,11 +161,18 @@ class BaseDrive():
     def compute_reward(self, new_drive):
         """
         Compute the reward as the reduction in drive from applying the outcome.
+        """
+        reward = self._current_drive - new_drive
+        return reward
+
+    def compute_reward(self, old_drive, new_drive):
+        """
+        Compute the reward as the reduction in drive from applying the outcome.
 
         :param new_drive:  New drive (H_{t+1}).
         :return: Scalar numpy value representing reward.
         """
-        reward = self._current_drive - new_drive
+        reward = old_drive - new_drive
         return reward
     
     def has_reached_optimal(self, current_internal_states, threshold):

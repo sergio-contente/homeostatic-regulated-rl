@@ -30,8 +30,8 @@ class HomeostaticAgent:
             config_path: Path to configuration file for drive parameters
             drive_type: Type of drive to use ('base_drive', 'interoceptive_drive', 'elliptic_drive')
             initial_position: Starting position in the environment
-            social_learning_rate: Learning rate for social norm adaptation (α)
-            beta: Social norm internalization strength (β)
+            social_learning_rate: Learning rate for social norm adaptation (alpha)
+            beta: Social norm internalization strength (beta)
             initial_internal_states: Initial internal state values (if None, randomized)
         """
         self.agent_id = agent_id
@@ -85,41 +85,38 @@ class HomeostaticAgent:
     def apply_natural_decay(self):
         """Apply natural decay to internal states."""
         self.internal_states = self.drive.apply_natural_decay(self.internal_states)
-        # Clamp states to valid range
-        self.internal_states = np.clip(self.internal_states, -1.0, 1.0)
         
-    def consume_resource(self, resource_types: np.ndarray) -> np.ndarray:
+    def consume_resource(self, resource_to_consume: np.ndarray) -> np.ndarray:
         """
         Consume resources and update internal states.
         
         Args:
-            resource_types: Boolean array indicating which resources to consume
+            resource_to_consume: Boolean array indicating which resources to consume
             
         Returns:
             intake: Array of actual intake amounts
         """
         # Apply intake to internal states
         states_before = self.internal_states.copy()
-        self.internal_states = self.drive.apply_intake(self.internal_states, resource_types)
-        
-        # Clamp states to valid range
-        self.internal_states = np.clip(self.internal_states, -1.0, 1.0)
+        self.internal_states = self.drive.apply_intake(self.internal_states, resource_to_consume)
         
         # Calculate actual intake (for social learning)
-        self.last_intake = self.drive.get_intake_array(resource_types)
+        self.last_intake = self.drive.get_intake_array(resource_to_consume)
         self.intake_history.append(self.last_intake.copy())
         
-        return self.last_intake
+        return self.last_intake, states_before
         
-    def compute_homeostatic_reward(self) -> float:
+    def compute_homeostatic_reward(self, old_states) -> float:
         """
         Compute reward based on drive reduction.
         
         Returns:
             reward: Homeostatic reward from drive reduction
         """
+        old_drive = self.drive.compute_drive(old_states)
+        print(f" New states: {self.internal_states}")
         new_drive = self.drive.compute_drive(self.internal_states)
-        reward = self.drive.compute_reward(new_drive)
+        reward = self.drive.compute_reward(old_drive, new_drive)
         self.drive.update_drive(new_drive)
         return reward
         
@@ -128,7 +125,7 @@ class HomeostaticAgent:
         Compute social cost based on NORMARL mechanism.
         
         Social cost formula:
-        Si(Qi) = βi * (Qi - Q̄i) * max{0, (a - b*E)} if Qi ≥ Q̄i
+        Si(Qi) = beta_i * (Qi - Q̄i) * max{0, (a - b*E)} if Qi ≥ Q̄i
         Si(Qi) = 0 if Qi < Q̄i
         
         Args:
@@ -152,7 +149,7 @@ class HomeostaticAgent:
         Update perception of social norms based on observed behavior.
         
         Uses the NORMARL update rule:
-        Q̄i(t+1) = (1 - αi) * Q̄i(t) + αi * observed_average
+        Q̄i(t+1) = (1 - alpha_i) * Q̄i(t) + alpha_i * observed_average
         
         Args:
             observed_average_intake: Average intake observed from all agents
@@ -161,10 +158,7 @@ class HomeostaticAgent:
             (1 - self.social_learning_rate) * self.perceived_social_norm + 
             self.social_learning_rate * observed_average_intake
         )
-        
-        # Keep social norms in valid range
-        self.perceived_social_norm = np.clip(self.perceived_social_norm, 0.0, 1.0)
-        
+                
     def observe_other_agent_behavior(self, other_agent_intake: np.ndarray):
         """
         Observe another agent's consumption behavior.
@@ -203,22 +197,6 @@ class HomeostaticAgent:
             critical: True if any internal state is near extreme values
         """
         return np.any(np.abs(self.internal_states) > threshold)
-        
-    def get_drive_urgency(self) -> float:
-        """
-        Get normalized drive urgency (0 = satisfied, 1 = maximum urgency).
-        
-        Returns:
-            urgency: Normalized drive value
-        """
-        current_drive = self.get_current_drive()
-        # Normalize based on maximum possible drive (when all states are at extremes)
-        max_possible_drive = self.drive.compute_drive(
-            np.ones(self.dimension_internal_states) * (-1.0)
-        )
-        if max_possible_drive > 0:
-            return min(current_drive / max_possible_drive, 1.0)
-        return 0.0
         
     def reset(self, initial_position: Optional[int] = None, 
               initial_internal_states: Optional[np.ndarray] = None):
