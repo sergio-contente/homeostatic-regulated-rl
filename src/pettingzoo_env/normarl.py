@@ -258,9 +258,14 @@ class NormalHomeostaticEnv(AECEnv):
         social_cost = 0.0
         if resource_consumed:
             # Use actual intake for social cost calculation
+            # Calculate scarcity BEFORE regeneration (current stock)
             resource_scarcity = self._compute_resource_scarcity()
             social_cost = current_agent.compute_social_cost(last_intake, resource_scarcity)
             print(f"👥 Social cost: {social_cost}")
+            print(f"👥 Resource scarcity: {resource_scarcity}")
+            print(f"👥 Agent intake: {last_intake}")
+            print(f"👥 Social norm: {current_agent.perceived_social_norm}")
+            print(f"👥 Excess consumption: {np.maximum(0, last_intake - current_agent.perceived_social_norm)}")
         
         # Combined reward
         reward = homeostatic_reward - social_cost
@@ -319,8 +324,9 @@ class NormalHomeostaticEnv(AECEnv):
             np.ndarray: Scarcity factor for each resource type
         """
         # NORMARL-style scarcity: max{0, (a - b.Et)}
-        a = 1.0  # Base social cost
-        b = 0.5  # Resource scarcity multiplier
+        # Adjusted for test environment: want scarcity when stock is around 2.0
+        a = 2.0  # Base social cost (increased from 1.0)
+        b = 0.8  # Resource scarcity multiplier (increased from 0.5)
         
         # Use absolute resource stock (not normalized) as per NORMARL formula
         scarcity = np.maximum(0, a - b * self.resource_stock)
@@ -329,31 +335,17 @@ class NormalHomeostaticEnv(AECEnv):
 
     def _update_global_environment(self):
         """Update global environment state after all agents have acted."""
-        # Update resource stock based on actual resource consumption
-        # Note: We need to track actual resource units consumed, not intake benefits
-        total_consumption = np.zeros(self.dimension_internal_states)
+        # The resource stock has already been reduced during individual agent steps
+        # Now we only need to apply regeneration according to NORMARL equation
+        # Et+1 = (1 + δ)Et - ΣQi,t where ΣQi,t was already applied during steps
         
-        # For now, we'll use a simple approach: count consumption actions
-        # Each consumption action (action 3+i) consumes 1.0 resource unit
-        # This is a simplification - ideally we'd track actual consumption per agent
-        for agent_id in self.agents:
-            agent = self.homeostatic_agents[agent_id]
-            # If agent consumed anything (last_intake > 0), assume they consumed 1.0 resource unit
-            if np.any(agent.last_intake > 0):
-                # Find which resource was consumed and add 1.0 to that resource
-                consumed_resource = np.where(agent.last_intake > 0)[0]
-                for resource_idx in consumed_resource:
-                    total_consumption[resource_idx] += 1.0
-        
-        print(f"🌍 Total consumption this round: {total_consumption}")
-        
-        # Store stock before update to calculate regeneration
+        # Store stock before regeneration
         stock_before = self.resource_stock.copy()
         
-        # Apply NORMARL equation: Et+1 = (1 + δ)Et - ΣQi,t
-        # where δ is the natural regeneration rate and ΣQi,t is total consumption
+        # Apply NORMARL regeneration: Et+1 = (1 + δ)Et
+        # Note: Consumption was already deducted during individual steps
         regeneration_rate = self.resource_regeneration_rate[0]  # Get from config file
-        self.resource_stock = (1 + regeneration_rate) * stock_before - total_consumption
+        self.resource_stock = (1 + regeneration_rate) * stock_before
         
         # Ensure resource stock doesn't go negative
         self.resource_stock = np.maximum(0, self.resource_stock)

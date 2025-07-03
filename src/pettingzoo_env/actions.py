@@ -67,7 +67,7 @@ class DefaultHomeostaticAction(ActionFunction):
         resources_to_consume = np.zeros(self.dim_states)
         for i in range(self.dim_states):
             if action == 3 + i:
-                resources_to_consume[i] = 1.0
+                # Only consume if agent is at the resource position
                 if agent_old_position == self.env.resources_info[i]["position"]:
                     resources_to_consume[i] = 1.0
 
