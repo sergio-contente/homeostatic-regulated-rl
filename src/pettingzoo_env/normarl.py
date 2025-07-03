@@ -16,6 +16,7 @@ from .observations import DefaultHomeostaticObservation
 class NormalHomeostaticEnv(AECEnv):
     metadata = {
         "name": "normal_homeostatic_env_v0",
+        "is_parallelizable": True
     }
 
     def __init__(self, config_path, drive_type, learning_rate, beta, number_resources, n_agents=10, render_mode=None, size=10):
@@ -306,8 +307,12 @@ class NormalHomeostaticEnv(AECEnv):
         for agent_id in self.agents:
             self.observations[agent_id] = self.observation_functions[agent_id]()
 
-        # 8. Move to next agent
-        self.agent_selection = self._agent_selector.next()
+        # 8. Move to next agent (only if there are agents left)
+        if self._agent_selector is not None and self.agents:
+            self.agent_selection = self._agent_selector.next()
+        else:
+            # No agents left, episode should end
+            self.agent_selection = None
 
         # 9. Accumulate rewards
         self._accumulate_rewards()
@@ -383,18 +388,40 @@ class NormalHomeostaticEnv(AECEnv):
 
     def _check_termination_conditions(self):
         """Check if any agents should terminate due to critical states."""
+        agents_to_remove = []
+        
         for agent_id in self.agents:
             agent = self.homeostatic_agents[agent_id]
             
             # Check if agent is in critical homeostatic state
             if agent.is_in_critical_state(threshold=1.0):
                 self.terminations[agent_id] = True
+                agents_to_remove.append(agent_id)
                 print(f"Agent {agent_id} terminated due to critical homeostatic state")
             
             # Check if all resources are depleted
-            if np.all(self.resource_stock <= 0):
+            elif np.all(self.resource_stock <= 0):
                 self.terminations[agent_id] = True
+                agents_to_remove.append(agent_id)
                 print(f"Agent {agent_id} terminated due to resource depletion")
+        
+        # Remove terminated agents from the active agents list
+        for agent_id in agents_to_remove:
+            if agent_id in self.agents:
+                self.agents.remove(agent_id)
+                print(f"Removed {agent_id} from active agents list")
+        
+        # Update agent selector if agents were removed
+        if agents_to_remove:
+            if self.agents:
+                self._agent_selector = AgentSelector(self.agents)
+                # If current agent was removed, move to next available agent
+                if self.agent_selection not in self.agents:
+                    self.agent_selection = self.agents[0]
+            else:
+                # All agents terminated
+                self.agent_selection = None
+                self._agent_selector = None
 
     def _clear_rewards(self):
         """Clear rewards for all agents."""
@@ -409,7 +436,11 @@ class NormalHomeostaticEnv(AECEnv):
     def _was_dead_step(self, action):
         """Handle step for an agent that is already terminated."""
         # Move to next agent without processing action
-        self.agent_selection = self._agent_selector.next()
+        if self._agent_selector is not None and self.agents:
+            self.agent_selection = self._agent_selector.next()
+        else:
+            # No agents left, episode should end
+            self.agent_selection = None
 
     def render(self):
         pass
