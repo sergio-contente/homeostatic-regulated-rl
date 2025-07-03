@@ -320,6 +320,10 @@ class NormalHomeostaticEnv(AECEnv):
         # 10. Render if needed
         if self.render_mode == "human":
             self.render()
+            
+        # 11. Return PettingZoo standard format
+        return self.observations, self.rewards, self.terminations, self.truncations, self.infos
+
 
     def _compute_resource_scarcity(self):
         """
@@ -366,7 +370,9 @@ class NormalHomeostaticEnv(AECEnv):
         """Update each agent's perception of social norms based on observed behavior."""
         # Calculate average consumption across all agents
         if len(self.agents) > 0:
-            total_intake = np.zeros(self.dimension_internal_states)
+            # Use the actual agent's dimension instead of env's dimension
+            agent_dim = self.homeostatic_agents[self.agents[0]].dimension_internal_states
+            total_intake = np.zeros(agent_dim)
             
             for agent_id in self.agents:
                 agent = self.homeostatic_agents[agent_id]

@@ -29,7 +29,8 @@ class DefaultHomeostaticObservation(ObservationFunction):
     def __init__(self, agent, env):
         super().__init__(agent, env)
         self.size = env.size
-        self.dim_states = env.dimension_internal_states
+        # Use the actual agent's internal state dimension instead of env's
+        self.dim_states = agent.dimension_internal_states
 
     def __call__(self):
         return {
