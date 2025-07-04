@@ -19,7 +19,7 @@ class NormalHomeostaticEnv(AECEnv):
         "is_parallelizable": True
     }
 
-    def __init__(self, config_path, drive_type, learning_rate, beta, number_resources, n_agents=10, render_mode=None, size=10):
+    def __init__(self, config_path, drive_type, learning_rate, beta, number_resources, n_agents=10, render_mode=None, size=10, seed=None):
         # Environment parameters
         self.size = size
         self.dimension_internal_states = number_resources
@@ -32,6 +32,12 @@ class NormalHomeostaticEnv(AECEnv):
         self.learning_rate = learning_rate
         self.beta = beta
         
+        # Set random seed
+        if seed is not None:
+            self.np_random, self.np_random_seed = seeding.np_random(seed)
+        else:
+            if not hasattr(self, 'np_random'):
+                self.np_random, self.np_random_seed = seeding.np_random(None)
         # Global resource management
         self.global_resource_manager = GlobalResourceManager(config_path, drive_type)
         
@@ -43,19 +49,54 @@ class NormalHomeostaticEnv(AECEnv):
         
         # Agent identification
         self.possible_agents = [f"agent_{i}" for i in range(n_agents)]
-        
-        # Initialize containers for agents and their functions
-        self.homeostatic_agents = {}
-        self.action_functions = {}
-        self.observation_functions = {}
-        
-        # Spaces will be set in reset after agents are created
-        self._action_spaces = {}
-        self._observation_spaces = {}
+        self.agents = self.possible_agents[:]
         
         # Initialize resource positions (similar to gymnasium environments)
         self._initialize_resources()
 
+        # Create homeostatic agents for each agent
+        self.homeostatic_agents = {}
+        self.action_functions = {}
+        self.observation_functions = {}
+
+        self.action_spaces = {}
+        self.observation_spaces = {}
+        
+        for agent_id in self.agents:
+            # Create homeostatic agent with random initial position
+            initial_position = self.np_random.integers(0, self.size)
+            
+            # Create homeostatic agent
+            homeostatic_agent = HomeostaticAgent(
+                agent_id=agent_id,
+                config_path=self.config_path,
+                drive_type=self.drive_type,
+                initial_position=initial_position,
+                social_learning_rate=self.learning_rate,
+                beta=self.beta
+            )
+            self.homeostatic_agents[agent_id] = homeostatic_agent
+            # Create action function (1D version for NORMARL)
+            action_function = DefaultHomeostaticAction(homeostatic_agent, self)
+            self.action_functions[agent_id] = action_function
+            
+            # Create observation function
+            observation_function = DefaultHomeostaticObservation(homeostatic_agent, self)
+            self.observation_functions[agent_id] = observation_function
+            
+            # Cache action and observation spaces
+            self.action_spaces[agent_id] = action_function.action_space()
+            self.observation_spaces[agent_id] = observation_function.observation_space()
+            
+        
+        # Initialize observations for all agents
+        self.observations = {}
+        for agent_id in self.agents:
+            self.observations[agent_id] = self.observation_functions[agent_id]()
+        
+        # Initialize agent selector for turn-based stepping
+        self._agent_selector = AgentSelector(self.agents)
+        self.agent_selection = self._agent_selector.next()
     def _initialize_resources(self):
         """
         Initialize resource positions on the grid.
@@ -91,7 +132,7 @@ class NormalHomeostaticEnv(AECEnv):
         
         #print(f"🌱 Initialized {len(self.resources_info)} resources at positions: {[r['position'] for r in self.resources_info.values()]}")
 
-    def reset(self, seed=None, options=None):
+    def reset(self, options=None):
         """
         Reset the environment and initialize all homeostatic agents, observations, and actions.
         
@@ -104,15 +145,6 @@ class NormalHomeostaticEnv(AECEnv):
         - observations: Current observations for each agent
         - resource_stock: Reset shared resource pool
         """
-        # Set random seed
-        if seed is not None:
-            self.np_random, self.np_random_seed = seeding.np_random(seed)
-        else:
-            if not hasattr(self, 'np_random'):
-                self.np_random, self.np_random_seed = seeding.np_random(None)
-        
-        # Initialize agent list
-        self.agents = self.possible_agents[:]
         
         # Initialize PettingZoo required attributes
         self.rewards = {agent: 0 for agent in self.agents}
@@ -125,46 +157,6 @@ class NormalHomeostaticEnv(AECEnv):
         # Reset resource system
         self.resource_stock = self.initial_resource_stock.copy()
         
-        # Create homeostatic agents for each agent
-        self.homeostatic_agents = {}
-        self.action_functions = {}
-        self.observation_functions = {}
-        
-        for agent_id in self.agents:
-            # Create homeostatic agent with random initial position
-            initial_position = self.np_random.integers(0, self.size)
-            
-            # Create homeostatic agent
-            homeostatic_agent = HomeostaticAgent(
-                agent_id=agent_id,
-                config_path=self.config_path,
-                drive_type=self.drive_type,
-                initial_position=initial_position,
-                social_learning_rate=self.learning_rate,
-                beta=self.beta
-            )
-            self.homeostatic_agents[agent_id] = homeostatic_agent
-            
-            # Create action function (1D version for NORMARL)
-            action_function = DefaultHomeostaticAction(homeostatic_agent, self)
-            self.action_functions[agent_id] = action_function
-            
-            # Create observation function
-            observation_function = DefaultHomeostaticObservation(homeostatic_agent, self)
-            self.observation_functions[agent_id] = observation_function
-            
-            # Cache action and observation spaces
-            self._action_spaces[agent_id] = action_function.action_space()
-            self._observation_spaces[agent_id] = observation_function.observation_space()
-        
-        # Initialize observations for all agents
-        self.observations = {}
-        for agent_id in self.agents:
-            self.observations[agent_id] = self.observation_functions[agent_id]()
-        
-        # Initialize agent selector for turn-based stepping
-        self._agent_selector = AgentSelector(self.agents)
-        self.agent_selection = self._agent_selector.next()
         
         return self.observations, self.infos
 
@@ -257,25 +249,21 @@ class NormalHomeostaticEnv(AECEnv):
         
         # Social cost (if consumption occurred)
         social_cost = 0.0
-        if resource_consumed:
-            # Use actual intake for social cost calculation
-            # Calculate scarcity BEFORE regeneration (current stock)
-            resource_scarcity = self._compute_resource_scarcity()
-            social_cost = current_agent.compute_social_cost(last_intake, resource_scarcity)
-            print(f"👥 Social cost: {social_cost}")
-            print(f"👥 Resource scarcity: {resource_scarcity}")
-            print(f"👥 Agent intake: {last_intake}")
-            print(f"👥 Social norm: {current_agent.perceived_social_norm}")
-            print(f"👥 Excess consumption: {np.maximum(0, last_intake - current_agent.perceived_social_norm)}")
+        #if resource_consumed:
+        # Use actual intake for social cost calculation
+        # Calculate scarcity BEFORE regeneration (current stock)
+        resource_scarcity = self._compute_resource_scarcity()
+        social_cost = current_agent.compute_social_cost(last_intake, resource_scarcity)
+        print(f"👥 Social cost: {social_cost}")
+        print(f"👥 Resource scarcity: {resource_scarcity}")
+        print(f"👥 Agent intake: {last_intake}")
+        print(f"👥 Social norm: {current_agent.perceived_social_norm}")
+        print(f"👥 Excess consumption: {np.maximum(0, last_intake - current_agent.perceived_social_norm)}")
         
         # Combined reward
         reward = homeostatic_reward - social_cost
-        
-        # Small penalty for invalid actions (trying to consume when no stock available)
-        if np.sum(resources_to_consume) > np.sum(actual_consumption):
-            reward -= 0.1
-            print(f"⚠️  Invalid action penalty applied (no stock available)")
 
+        reward = 100.0 * reward # Scale reward to 100.0
         # Store reward for current agent
         self.rewards[current_agent_id] = reward
 
@@ -468,13 +456,13 @@ class NormalHomeostaticEnv(AECEnv):
         """
         Return the action space for the specified agent.
         """
-        return self._action_spaces[agent]
+        return self.action_spaces[agent]
     
     def observation_space(self, agent):
         """
         Return the observation space for the specified agent.
         """
-        return self._observation_spaces[agent]
+        return self.observation_spaces[agent]
 
 
 def main():

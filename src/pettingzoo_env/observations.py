@@ -29,19 +29,24 @@ class DefaultHomeostaticObservation(ObservationFunction):
     def __init__(self, agent, env):
         super().__init__(agent, env)
         self.size = env.size
-        # Use the actual agent's internal state dimension instead of env's
-        self.dim_states = agent.dimension_internal_states
+        self.dim_states = env.dimension_internal_states
 
     def __call__(self):
-        return {
-            "position": self.agent.position,
-            "internal_states": self.agent.internal_states,
-            "perceived_social_norm": self.agent.perceived_social_norm
-        }
+        return np.concatenate([
+            np.array([self.agent.position], dtype=np.float32),
+            self.agent.internal_states.astype(np.float32),
+            self.agent.perceived_social_norm.astype(np.float32)
+        ])
 
     def observation_space(self):
-        return spaces.Dict({
-            "position": spaces.Discrete(self.size),
-            "internal_states": spaces.Box(low=-1.0, high=1.0, shape=(self.dim_states,), dtype=np.float64),
-            "perceived_social_norm": spaces.Box(low=0.0, high=1.0, shape=(self.dim_states,), dtype=np.float64)
-        })
+        low = np.concatenate([
+            np.array([0.0]),
+            np.full(self.dim_states, -1.0),
+            np.zeros(self.dim_states)
+        ])
+        high = np.concatenate([
+            np.array([self.size - 1.0]),
+            np.full(self.dim_states, 1.0),
+            np.ones(self.dim_states)
+        ])
+        return spaces.Box(low=low, high=high, dtype=np.float32)
