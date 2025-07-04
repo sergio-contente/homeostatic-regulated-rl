@@ -545,7 +545,7 @@ def main():
         print(f"  Reward: {reward:.3f}")
         
         # If all agents have acted this round, show summary
-        if env._agent_selector.is_last():
+        if env.agents and env._agent_selector is not None and env._agent_selector.is_last():
             print(f"  📈 Resource stock: {env.resource_stock}")
             print(f"  🌍 Global update completed")
             
