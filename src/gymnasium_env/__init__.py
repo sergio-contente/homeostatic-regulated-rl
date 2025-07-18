@@ -18,6 +18,12 @@ register(
     max_episode_steps=3000
 )
 
+register(
+    id="NormarlHomeostatic-v0",
+    entry_point="src.gymnasium_env.envs:NormarlHomeostaticEnv",
+    max_episode_steps=3000
+)
+
 # Available parameters for the `register` function in Gymnasium:
 
 # reward_threshold : float (default: None)
