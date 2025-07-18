@@ -42,6 +42,10 @@ class MultiAgentNormarlWrapper(gym.Wrapper):
         self.agent_rewards = [[] for _ in range(n_agents)]
         self.agent_social_costs = [[] for _ in range(n_agents)]
         self.agent_consumptions = [[] for _ in range(n_agents)]
+        
+        # 🎯 NEW: Track individual agent states for logging
+        self.agent_states_history = [[] for _ in range(n_agents)]
+        self.agent_drives_history = [[] for _ in range(n_agents)]
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
@@ -53,6 +57,8 @@ class MultiAgentNormarlWrapper(gym.Wrapper):
         self.agent_rewards = [[] for _ in range(self.n_agents)]
         self.agent_social_costs = [[] for _ in range(self.n_agents)]
         self.agent_consumptions = [[] for _ in range(self.n_agents)]
+        self.agent_states_history = [[] for _ in range(self.n_agents)]
+        self.agent_drives_history = [[] for _ in range(self.n_agents)]
 
         obs["agent_id"] = self.current_agent
         obs["episode_step"] = np.array([self.episode_step], dtype=np.int32)
@@ -69,6 +75,12 @@ class MultiAgentNormarlWrapper(gym.Wrapper):
         self.agent_consumptions[self.current_agent].append(np.sum(agent_intake))
         social_cost = self.env.compute_social_cost(agent_intake)
         self.agent_social_costs[self.current_agent].append(social_cost)
+        
+        # 🎯 NEW: Capture agent's state snapshot for logging
+        current_drive = self.env.drive.get_current_drive()
+        current_internal_states = self.env.agent_info["internal_states"].copy()
+        self.agent_drives_history[self.current_agent].append(current_drive)
+        self.agent_states_history[self.current_agent].append(current_internal_states)
 
         self.episode_step += 1
         is_last_agent = self.current_agent == self.n_agents - 1
@@ -109,8 +121,9 @@ class MultiAgentNormarlWrapper(gym.Wrapper):
         return stats
 
 class NormarlCallback(BaseCallback):
-    def __init__(self, verbose=0):
+    def __init__(self, n_agents=10, verbose=0):
         super().__init__(verbose)
+        self.n_agents = n_agents
         self.episode_rewards = []
         self.episode_consumptions = []
         self.episode_social_costs = []
@@ -127,7 +140,7 @@ class NormarlCallback(BaseCallback):
                 self.logger.record("normarl/total_consumption", info["total_episode_consumption"])
                 self.logger.record("normarl/final_resource_stock", info["final_resource_stock"])
                 self.logger.record("normarl/episode_length", info["episode_length"])
-                for agent_id in range(2):
+                for agent_id in range(self.n_agents):
                     if f"agent_{agent_id}_mean_reward" in info:
                         self.logger.record(f"normarl/agent_{agent_id}_reward", info[f"agent_{agent_id}_mean_reward"])
                         self.logger.record(f"normarl/agent_{agent_id}_consumption", info[f"agent_{agent_id}_total_consumption"])
@@ -135,17 +148,69 @@ class NormarlCallback(BaseCallback):
 
         try:
             vec_env = self.training_env.envs[0]
-            base_env = unwrap_env(vec_env)
-            for agent_id in range(2):
-                drive = base_env.drive.get_current_drive()
-                position = base_env.agent_info["position"]
-                internal_states = base_env.agent_info["internal_states"]
-                state_names = base_env.drive.get_internal_states_names()
-                self.logger.record(f"agent_{agent_id}/States/drive", drive)
-                self.logger.record(f"agent_{agent_id}/States/position", float(position))
-                for i, value in enumerate(internal_states):
-                    name = state_names[i] if i < len(state_names) else f"state_{i}"
-                    self.logger.record(f"agent_{agent_id}/States/{name}", float(value))
+            base_env = unwrap_env(vec_env)  # Unwrap to base environment
+            
+            # Find the MultiAgentNormarlWrapper in the chain  
+            wrapper_env = None
+            current_env = vec_env
+            while hasattr(current_env, 'env'):
+                if hasattr(current_env, 'current_agent'):
+                    wrapper_env = current_env
+                    break
+                current_env = current_env.env
+            
+            # Fallback if wrapper not found
+            if wrapper_env is None:
+                wrapper_env = vec_env
+            
+            # Get basic environment info
+            current_agent = getattr(wrapper_env, 'current_agent', 0)
+            position = base_env.agent_info["position"]
+            internal_states = base_env.agent_info["internal_states"]
+            state_names = base_env.drive.get_internal_states_names()
+            
+            # Log current agent's detailed state
+            drive = base_env.drive.get_current_drive()
+            self.logger.record(f"current_agent/States/agent_id", float(current_agent))
+            self.logger.record(f"current_agent/States/drive", float(drive))
+            self.logger.record(f"current_agent/States/position", float(position))
+            for i, value in enumerate(internal_states):
+                name = state_names[i] if i < len(state_names) else f"state_{i}"
+                self.logger.record(f"current_agent/States/{name}", float(value))
+            
+            # 🎯 NEW: Log individual agent states from captured history
+            if (hasattr(wrapper_env, 'agent_drives_history') and 
+                hasattr(wrapper_env, 'agent_states_history') and 
+                wrapper_env.agent_drives_history):
+                for agent_id in range(self.n_agents):
+                    # Log most recent drive for each agent
+                    if wrapper_env.agent_drives_history[agent_id]:
+                        recent_drive = wrapper_env.agent_drives_history[agent_id][-1]
+                        self.logger.record(f"agent_{agent_id}/States/drive", float(recent_drive))
+                    
+                    # Log most recent internal states for each agent
+                    if wrapper_env.agent_states_history[agent_id]:
+                        recent_states = wrapper_env.agent_states_history[agent_id][-1]
+                        for i, value in enumerate(recent_states):
+                            name = state_names[i] if i < len(state_names) else f"state_{i}"
+                            self.logger.record(f"agent_{agent_id}/States/{name}", float(value))
+                    
+                    # Log position (shared among all agents in this environment)
+                    self.logger.record(f"agent_{agent_id}/States/position", float(position))
+                    
+                    # Log recent performance metrics
+                    if (hasattr(wrapper_env, 'agent_consumptions') and 
+                        agent_id < len(wrapper_env.agent_consumptions) and
+                        wrapper_env.agent_consumptions[agent_id]):
+                        recent_consumption = wrapper_env.agent_consumptions[agent_id][-1]
+                        self.logger.record(f"agent_{agent_id}/Performance/recent_consumption", float(recent_consumption))
+                    
+                    if (hasattr(wrapper_env, 'agent_social_costs') and 
+                        agent_id < len(wrapper_env.agent_social_costs) and
+                        wrapper_env.agent_social_costs[agent_id]):
+                        recent_social_cost = wrapper_env.agent_social_costs[agent_id][-1]
+                        self.logger.record(f"agent_{agent_id}/Performance/recent_social_cost", float(recent_social_cost))
+                            
         except Exception as e:
             print(f"[Logging warning] Could not log agent states: {e}")
 
@@ -161,7 +226,7 @@ class NormarlCallback(BaseCallback):
         np.save(filepath, data)
 
 
-def create_normarl_env(config_path="config/config.yaml", n_agents=2):
+def create_normarl_env(config_path="config/config.yaml", n_agents=2, ppo_learning_rate=3e-4, social_learning_rate=0.02):
     def _init():
         #regen = 2e-4
             #ppo_1 = 0.8
@@ -201,18 +266,24 @@ def create_normarl_env(config_path="config/config.yaml", n_agents=2):
            #ppo_31 = 0.8 but 2*total_intake with social cost 1x
 
             
-        learning_rate = 3e-4 
-        # learning rate of the other agent belief is really low
+        # Use passed parameters for learning rates
+        # social learning rate should be low as agents need time to observe and adapt to social norms
         # put more agents in the training to analyse the distribution of beliefs
         # try for 10 agents to begin -> visualize and aggregate the population methods
         # visualize the society and not single agents
         # It can be a solution for a coordination problem <-> we have a drive and a social cost, we want them to coordinate them with each other
+
+        #ppo_32: alpha social 0.02, beta 0.1, size 1, 7000 timesteps, 10 agents, 1 env
+        #ppo_33: alpha social 0.02, beta 0.3, size 1, 7000 timesteps, 10 agents, 1 env
+        #ppo_34: alpha social 0.02, beta 0.5, size 1, 7000 timesteps, 10 agents, 1 env
+        #ppo_35: alpha social 0.02, beta 0.7, size 1, 7000 timesteps, 10 agents, 1 env
+        #ppo_36: alpha social 0.02, beta 0.9, size 1, 7000 timesteps, 10 agents, 1 env
         
-        beta = 0.8
+        beta = 0.9
         env = NormarlHomeostaticEnv(
             config_path=config_path,
             drive_type="base_drive",
-            learning_rate=learning_rate,
+            social_learning_rate=social_learning_rate,
             beta=beta,
             size=1,
             render_mode=None
@@ -222,12 +293,12 @@ def create_normarl_env(config_path="config/config.yaml", n_agents=2):
         return env
     return _init
 
-def train_ppo_normarl(total_timesteps=20000, n_envs=1, n_agents=2, config_path="config/config.yaml", save_path="./normarl_models/", log_path="./normarl_logs/"):
+def train_ppo_normarl(total_timesteps=20000, n_envs=1, n_agents=2, config_path="config/config.yaml", save_path="./normarl_models/", log_path="./normarl_logs/", ppo_learning_rate=3e-4, social_learning_rate=0.02):
     os.makedirs(save_path, exist_ok=True)
     os.makedirs(log_path, exist_ok=True)
 
     env = make_vec_env(
-        create_normarl_env(config_path, n_agents),
+        create_normarl_env(config_path, n_agents, ppo_learning_rate, social_learning_rate),
         n_envs=n_envs,
         vec_env_cls=DummyVecEnv
     )
@@ -235,7 +306,7 @@ def train_ppo_normarl(total_timesteps=20000, n_envs=1, n_agents=2, config_path="
     model = PPO(
         "MultiInputPolicy",
         env,
-        learning_rate=3e-4,
+        learning_rate=ppo_learning_rate,
         n_steps=128,
         batch_size=64,
         n_epochs=10,
@@ -250,8 +321,8 @@ def train_ppo_normarl(total_timesteps=20000, n_envs=1, n_agents=2, config_path="
         device="auto"
     )
 
-    normarl_callback = NormarlCallback()
-    eval_env = DummyVecEnv([create_normarl_env(config_path, n_agents)])
+    normarl_callback = NormarlCallback(n_agents=n_agents)
+    eval_env = DummyVecEnv([create_normarl_env(config_path, n_agents, ppo_learning_rate, social_learning_rate)])
     eval_callback = EvalCallback(
         eval_env,
         best_model_save_path=save_path,
@@ -277,11 +348,17 @@ def train_ppo_normarl(total_timesteps=20000, n_envs=1, n_agents=2, config_path="
 if __name__ == "__main__":
     config = {
         'total_timesteps': 20000,
-        'n_envs': 1,  # Debug mode
-        'n_agents': 2,
-        'config_path': 'config/config.yaml'
+        'n_envs': 1, 
+        'n_agents': 10,
+        'config_path': 'config/config.yaml',
+        # Separate learning rates for different components:
+        'ppo_learning_rate': 3e-4,    # PPO neural network training (standard)
+        'social_learning_rate': 0.02  # Social norm adaptation (higher for faster social learning)
     }
 
     print("Starting NORMARL PPO Training\n" + "="*50)
+    print(f"PPO Learning Rate: {config['ppo_learning_rate']}")
+    print(f"Social Learning Rate: {config['social_learning_rate']}")
+    print("="*50)
     model, callback = train_ppo_normarl(**config)
     print("\nTraining completed!\n" + "="*50)

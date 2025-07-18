@@ -14,7 +14,7 @@ class NormarlHomeostaticEnv(gym.Env):
     """
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
-    def __init__(self, config_path, drive_type, learning_rate, beta, render_mode=None, size=10):
+    def __init__(self, config_path, drive_type, social_learning_rate, beta, render_mode=None, size=10):
         self.param_manager = ParameterHandler(config_path)
         self.drive_type = drive_type
         self.size = size  # The size of the 1D grid
@@ -29,7 +29,7 @@ class NormarlHomeostaticEnv(gym.Env):
         
         # NORMARL parameters
         self.beta = beta  # Norm internalization strength
-        self.alpha = learning_rate  # Learning rate
+        self.social_alpha = social_learning_rate  # Social norm learning rate (separate from PPO)
         self.gamma = 0.1  # Softmax temperature
         
         # Social cost parameters
@@ -39,8 +39,8 @@ class NormarlHomeostaticEnv(gym.Env):
         # Belief about average consumption (Q̄ in NORMARL)
         self.perceived_social_norm = np.zeros(self.dimension_internal_states)
         
-        # Resource stock (E in NORMARL)
-        self.initial_resource_stock = np.ones(self.dimension_internal_states) * 2
+        # Resource stock (E in NORMARL) - Lower for scarcity testing
+        self.initial_resource_stock = np.ones(self.dimension_internal_states) * 1.5
         self.resource_stock = self.initial_resource_stock.copy()
         # ✅ Get regeneration rates from global resource manager
         self.resource_regeneration_rate = self.resource_manager.get_resource_stock_regeneration_array()
@@ -112,6 +112,10 @@ class NormarlHomeostaticEnv(gym.Env):
                 "position": random_positions[i]
                 # "available": True
             }
+        
+        print(f"🏭 RESOURCE INITIALIZATION:")
+        for i, resource in self.resources_info.items():
+            print(f"  Resource {i} ({resource['name']}) at position {resource['position']}")
 
     def compute_social_cost(self, intake):
         """
@@ -131,36 +135,61 @@ class NormarlHomeostaticEnv(gym.Env):
         print("Resource stock: ", self.resource_stock)
         print("Intake: ", intake)
         print("Belief: ", belief)
+        print("Beta: ", beta)
+        print("a:", self.a, "b:", self.b)
+        
+        # Debug individual conditions
+        for i in range(self.dimension_internal_states):
+            if intake[i] > 0:  # Only print when there's actual intake
+                print(f"  Resource {i}: intake={intake[i]:.3f}, belief={belief[i]:.3f}, "
+                      f"intake>belief: {intake[i] > belief[i]}, scarcity: {scarcity_factor[i]:.3f}")
         
         
         # Social cost for each resource type
         social_cost = 0
         for i in range(self.dimension_internal_states):
             if intake[i] > belief[i]:
-                social_cost += beta * (intake[i] - belief[i]) * scarcity_factor[i]
+                cost_component = beta * (intake[i] - belief[i]) * scarcity_factor[i]
+                social_cost += cost_component
+                print(f"  → Adding social cost for resource {i}: {cost_component:.3f}")
         
+        print(f"TOTAL SOCIAL COST: {social_cost:.3f}")
         return social_cost
 
     def update_belief(self, observed_avg_intake):
         """
         Update belief about average consumption using equation (5)
         Q̄i(t+1) = (1 - αi) * Q̄i(t) + αi * q̄(t+1)
+        Where αi is the social learning rate (social_alpha)
         """
+        old_norm = self.perceived_social_norm.copy()
         self.perceived_social_norm = (
-            (1 - self.alpha) * self.perceived_social_norm + 
-            self.alpha * observed_avg_intake
+            (1 - self.social_alpha) * self.perceived_social_norm + 
+            self.social_alpha * observed_avg_intake
         )
+        print(f"UPDATE BELIEF: old_norm={old_norm}, observed_avg={observed_avg_intake}, "
+              f"new_norm={self.perceived_social_norm}, alpha={self.social_alpha}")
 
     def update_resource_stock(self, total_intake):
         """
         Update resource stock using equation (1)
         E(t+1) = (1 + δ) * E(t) - Σ(Qi)
         Where Q = K (total intake)
+        
+        Resource stock cannot exceed initial maximum values.
         """
         # ✅ Use global resource manager for consistent regeneration
+        old_stock = self.resource_stock.copy()
         self.resource_stock = self.resource_manager.update_resource_stock(
             self.resource_stock, 2 * total_intake
         )
+        
+        # 🔒 Clamp resource stock to not exceed initial maximum values
+        self.resource_stock = np.minimum(self.resource_stock, self.initial_resource_stock)
+        
+        # Debug log for resource stock changes
+        print(f"RESOURCE UPDATE: old={old_stock}, new={self.resource_stock}, "
+              f"max_allowed={self.initial_resource_stock}, intake={total_intake}")
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -264,10 +293,14 @@ class NormarlHomeostaticEnv(gym.Env):
         for i in range(self.dimension_internal_states):
             if action == 3 + i:
                 resource = self.resources_info[i]
+                print(f"  🎯 CONSUMPTION ATTEMPT: Agent at pos {current_position}, trying to consume resource {i} at pos {resource['position']}")
                 # if current_position == resource["position"] and resource["available"]:
                 if current_position == resource["position"]:
                     intake_resources[i] = 1.0
+                    print(f"  ✅ SUCCESS: Consumed resource {i}!")
                     # resource["available"] = False
+                else:
+                    print(f"  ❌ FAILED: Agent not at resource position")
 
         new_internal_state = self.drive.apply_intake(states_after_decay, intake_resources)
         self.intake = self.drive.get_intake_array(intake_resources)
@@ -298,8 +331,9 @@ class NormarlHomeostaticEnv(gym.Env):
     def _compute_reward(self, intake):
         """Compute reward combining homeostatic and social components"""
         # Homeostatic reward (drive reduction)
+        old_drive = self.drive.get_current_drive()  # Get current drive (before action)
         new_drive = self.drive.compute_drive(self.agent_info["internal_states"]) # get new drive
-        homeostatic_reward = self.drive.compute_reward(new_drive) #get reward
+        homeostatic_reward = self.drive.compute_reward(old_drive, new_drive) #get reward
         self.drive.update_drive(new_drive) # update drive
         
         # Social cost
@@ -431,7 +465,7 @@ class NormarlHomeostaticEnv(gym.Env):
             canvas.blit(total_text, (300, info_y))
         
         # Agent parameters
-        agent_text = label_font.render(f"Agent (β={self.beta:.2f}, α={self.alpha:.2f})", True, (0, 0, 0))
+        agent_text = label_font.render(f"Agent (β={self.beta:.2f}, α={self.social_alpha:.2f})", True, (0, 0, 0))
         canvas.blit(agent_text, (20, info_y + 30))
         
         # Belief about average consumption
@@ -518,20 +552,26 @@ class NormarlHomeostaticEnv(gym.Env):
 if __name__ == '__main__':
     config_path = "config/config.yaml"
     drive_type = "base_drive"
-    learning_rate = 0.02
+    
+    # Separate learning rates for different components:
+    social_learning_rate = 0.02  # Learning rate for social norm adaptation (higher - agents adapt to norms)
+    ppo_learning_rate = 3e-4     # Learning rate for PPO training (lower - neural network training)
+    
     n_agents = 2
     n_trials = 1000
 
     env = NormarlHomeostaticEnv(
         config_path=config_path,
         drive_type=drive_type,
-        learning_rate=learning_rate,
+        social_learning_rate=social_learning_rate,
+        beta=0.8,
         size=1,
         render_mode="human"
     )
 
+    # Social norm learning parameters
     env.beta = 0.8
-    env.alpha = learning_rate
+    env.social_alpha = social_learning_rate
 
     obs, info = env.reset()
 
