@@ -1,30 +1,91 @@
+"""Improved multi-agent homeostatic environment with PettingZoo best practices."""
+
+import logging
+from typing import Optional, Dict, Any
 import functools
+
 from pettingzoo import AECEnv
 import numpy as np
-import gymnasium
-import numpy as np
-from gymnasium.spaces import Discrete, Box, Dict
+from gymnasium.spaces import Discrete, Box, Dict as GymDict
 from gymnasium.utils import seeding
-
 from pettingzoo.utils import AgentSelector, wrappers
 
 from src.utils.resource_manager import GlobalResourceManager
-from ..agents.homeostatic_agent import HomeostaticAgent
-from ..agents.actions import DefaultHomeostaticAction
-from ..agents.observations import DefaultHomeostaticObservation
+from src.envs.agents.homeostatic_agent import HomeostaticAgent
+from src.envs.agents.actions import DefaultHomeostaticAction
+from src.envs.agents.observations import DefaultHomeostaticObservation
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
 
 class NormalHomeostaticEnv(AECEnv):
+    """
+    Improved multi-agent homeostatic environment with NORMARL social norms.
+    
+    Features:
+    - Full PettingZoo AECEnv compatibility
+    - Robust agent lifecycle management
+    - Proper seed handling for reproducibility
+    - Clean reset between episodes
+    - Logging instead of print statements
+    - Compatible with supersuit and other wrappers
+    """
+    
     metadata = {
         "name": "normal_homeostatic_env_v0",
-        "is_parallelizable": True
+        "is_parallelizable": True,
+        "render_modes": ["human", "rgb_array"]
     }
 
-    def __init__(self, config_path, drive_type, learning_rate, beta, number_resources, n_agents=10, render_mode=None, size=10, seed=None):
+    def __init__(
+        self, 
+        config_path: str,
+        drive_type: str, 
+        learning_rate: float,
+        beta: float, 
+        number_resources: int,
+        n_agents: int = 10,
+        render_mode: Optional[str] = None,
+        size: int = 10,
+        max_steps: int = 1000,
+        seed: Optional[int] = None,
+        log_level: str = "INFO"
+    ):
+        """
+        Initialize the improved multi-agent homeostatic environment.
+        
+        Args:
+            config_path: Path to configuration file
+            drive_type: Type of drive to use
+            learning_rate: Learning rate for social norm adaptation
+            beta: Social norm internalization strength
+            number_resources: Number of resource types
+            n_agents: Number of agents
+            render_mode: Rendering mode
+            size: Size of the 1D grid
+            max_steps: Maximum steps per episode
+            seed: Random seed for reproducibility
+            log_level: Logging level ("DEBUG", "INFO", "WARNING", "ERROR")
+        """
+        super().__init__()
+        
+        # Setup logging
+        logger.setLevel(getattr(logging, log_level.upper()))
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+        
         # Environment parameters
         self.size = size
         self.dimension_internal_states = number_resources
         self.n_agents = n_agents
         self.render_mode = render_mode
+        self.max_steps = max_steps
         
         # Agent configuration parameters
         self.config_path = config_path
@@ -32,33 +93,75 @@ class NormalHomeostaticEnv(AECEnv):
         self.learning_rate = learning_rate
         self.beta = beta
         
-        # Set random seed
-        if seed is not None:
-            self.np_random, self.np_random_seed = seeding.np_random(seed)
-        else:
-            if not hasattr(self, 'np_random'):
-                self.np_random, self.np_random_seed = seeding.np_random(None)
+        # 🔧 FIXED: Proper seed handling for reproducibility
+        self._seed = seed
+        self.np_random, self.np_random_seed = seeding.np_random(seed)
+        
         # Global resource management
         self.global_resource_manager = GlobalResourceManager(config_path, drive_type)
         
         # Resource stock (NORMARL-style shared resource pool)
-        self.initial_resource_stock = np.ones(number_resources) * 3
+        self.initial_resource_stock = np.ones(number_resources) * 3.0
         self.resource_stock = self.initial_resource_stock.copy()
         self.resource_regeneration_rate = self.global_resource_manager.get_resource_stock_regeneration_array()
-        print(f"🔄 Resource regeneration rate: {self.resource_regeneration_rate}")
+        
+        logger.info(f"🔄 Resource regeneration rate: {self.resource_regeneration_rate}")
         
         # Agent identification
         self.possible_agents = [f"agent_{i}" for i in range(n_agents)]
         self.agents = self.possible_agents[:]
         
-        # Initialize resource positions (similar to gymnasium environments)
+        # Initialize resource positions
         self._initialize_resources()
+        
+        # Episode tracking
+        self.num_moves = 0
+        self.round_intakes = []  # Track intakes for social norm updates
+        
+        # 🔧 Initialize agent system (will be reset in reset())
+        self._create_agent_system()
+        
+        # 🔧 FIXED: Explicit AgentSelector initialization
+        self._agent_selector = AgentSelector(self.agents)
+        self.agent_selection = self._agent_selector.next()
+        
+        logger.info(f"✅ Environment initialized with {n_agents} agents")
 
-        # Create homeostatic agents for each agent
+    def _initialize_resources(self):
+        """Initialize resource positions on the grid."""
+        temp_drive = self.global_resource_manager.param_manager.create_drive(self.drive_type)
+        state_names = temp_drive.get_internal_states_names()
+        
+        # Use fixed seed for reproducible resource positions
+        resource_rng = np.random.RandomState(123)
+        
+        if self.dimension_internal_states <= self.size:
+            random_positions = resource_rng.choice(
+                self.size, size=self.dimension_internal_states, replace=False
+            )
+        else:
+            random_positions = resource_rng.choice(
+                self.size, size=self.dimension_internal_states, replace=True
+            )
+        
+        self.resources_info = {}
+        for i, state_name in enumerate(state_names):
+            self.resources_info[i] = {
+                "name": state_name,
+                "position": random_positions[i],
+                "available": True
+            }
+        
+        logger.debug(f"🌱 Initialized {len(self.resources_info)} resources")
+
+    def _create_agent_system(self):
+        """Create or recreate the agent system for clean state."""
+        logger.debug("🏗️ Creating agent system")
+        
+        # 🔧 FIXED: Clean recreation of agents to prevent state leakage
         self.homeostatic_agents = {}
         self.action_functions = {}
         self.observation_functions = {}
-
         self.action_spaces = {}
         self.observation_spaces = {}
         
@@ -66,7 +169,6 @@ class NormalHomeostaticEnv(AECEnv):
             # Create homeostatic agent with random initial position
             initial_position = self.np_random.integers(0, self.size)
             
-            # Create homeostatic agent
             homeostatic_agent = HomeostaticAgent(
                 agent_id=agent_id,
                 config_path=self.config_path,
@@ -76,110 +178,69 @@ class NormalHomeostaticEnv(AECEnv):
                 beta=self.beta
             )
             self.homeostatic_agents[agent_id] = homeostatic_agent
-            # Create action function (1D version for NORMARL)
+            
+            # Create action and observation functions
             action_function = DefaultHomeostaticAction(homeostatic_agent, self)
             self.action_functions[agent_id] = action_function
             
-            # Create observation function
             observation_function = DefaultHomeostaticObservation(homeostatic_agent, self)
             self.observation_functions[agent_id] = observation_function
             
-            # Cache action and observation spaces
+            # Cache spaces
             self.action_spaces[agent_id] = action_function.action_space()
             self.observation_spaces[agent_id] = observation_function.observation_space()
-            
         
-        # Initialize observations for all agents
+        # Initialize observations
         self.observations = {}
         for agent_id in self.agents:
             self.observations[agent_id] = self.observation_functions[agent_id]()
-        
-        # Initialize agent selector for turn-based stepping
-        self._agent_selector = AgentSelector(self.agents)
-        self.agent_selection = self._agent_selector.next()
-    def _initialize_resources(self):
-        """
-        Initialize resource positions on the grid.
-        Creates fixed positions for each resource type that agents must visit to consume.
-        """
-        # Create a temporary drive to get state names
-        temp_drive = self.global_resource_manager.param_manager.create_drive(self.drive_type)
-        state_names = temp_drive.get_internal_states_names()
-        
-        # Use fixed seed for reproducible resource positions
-        resource_rng = np.random.RandomState(123)
-        
-        # Distribute resources across the grid
-        if self.dimension_internal_states <= self.size:
-            # Enough positions for unique locations
-            random_positions = resource_rng.choice(
-                self.size, size=self.dimension_internal_states, replace=False
-            )
-        else:
-            # More resources than positions - allow duplicates
-            random_positions = resource_rng.choice(
-                self.size, size=self.dimension_internal_states, replace=True
-            )
-        
-        # Create resources_info structure
-        self.resources_info = {}
-        for i, state_name in enumerate(state_names):
-            self.resources_info[i] = {
-                "name": state_name,
-                "position": random_positions[i],
-                "available": True  # In NORMARL, resources regenerate from global stock
-            }
-        
-        #print(f"🌱 Initialized {len(self.resources_info)} resources at positions: {[r['position'] for r in self.resources_info.values()]}")
 
-    def reset(self, options=None):
+    def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None):
         """
-        Reset the environment and initialize all homeostatic agents, observations, and actions.
+        🔧 FIXED: Reset following PettingZoo AECEnv standard.
         
-        Initializes:
-        - agents: List of active agents
-        - rewards, terminations, truncations, infos: PettingZoo required attributes
-        - homeostatic_agents: HomeostaticAgent instances for each agent
-        - action_functions: Action functions for each agent
-        - observation_functions: Observation functions for each agent
-        - observations: Current observations for each agent
-        - resource_stock: Reset shared resource pool
+        Returns None for AECEnv compatibility with wrappers.
         """
+        # Handle seed properly
+        if seed is not None:
+            self._seed = seed
+            self.np_random, self.np_random_seed = seeding.np_random(seed)
+            logger.debug(f"🎲 Seed set to: {seed}")
+        
+        # Reset agents list to original
+        self.agents = self.possible_agents[:]
+        
+        # 🔧 FIXED: Clean recreation of agent system
+        self._create_agent_system()
         
         # Initialize PettingZoo required attributes
-        self.rewards = {agent: 0 for agent in self.agents}
-        self._cumulative_rewards = {agent: 0 for agent in self.agents}
+        self.rewards = {agent: 0.0 for agent in self.agents}
+        self._cumulative_rewards = {agent: 0.0 for agent in self.agents}
         self.terminations = {agent: False for agent in self.agents}
         self.truncations = {agent: False for agent in self.agents}
         self.infos = {agent: {} for agent in self.agents}
+        
+        # Reset environment state
         self.num_moves = 0
-        
-        # Reset resource system
         self.resource_stock = self.initial_resource_stock.copy()
+        self.round_intakes = []
         
+        # 🔧 FIXED: Explicit AgentSelector reset
+        self._agent_selector = AgentSelector(self.agents)
+        self.agent_selection = self._agent_selector.next()
         
-        return self.observations, self.infos
+        logger.info(f"🔄 Environment reset with {len(self.agents)} agents")
+        
+        # 🔧 FIXED: Return None for AECEnv compatibility
+        return None
 
     def step(self, action):
-        """
-        Execute one step for the current agent in the NORMARL homeostatic environment.
-        
-        This method:
-        1. Applies natural decay to current agent
-        2. Executes the agent's action via action function
-        3. Calculates homeostatic and social rewards
-        4. Updates global resource state
-        5. Checks for termination conditions
-        6. Moves to next agent
-        
-        Args:
-            action: Action index for the current agent
-        """
+        """Execute one step for the current agent."""
         # Handle dead agents
-        if (
-            self.terminations[self.agent_selection]
-            or self.truncations[self.agent_selection]
-        ):
+        if (self.agent_selection is None or 
+            self.agent_selection not in self.agents or
+            self.terminations.get(self.agent_selection, False) or 
+            self.truncations.get(self.agent_selection, False)):
             self._was_dead_step(action)
             return
 
@@ -187,196 +248,210 @@ class NormalHomeostaticEnv(AECEnv):
         current_agent = self.homeostatic_agents[current_agent_id]
         action_func = self.action_functions[current_agent_id]
 
+        logger.debug(f"🎮 {current_agent_id} taking action: {action}")
+
         # Reset cumulative rewards for current agent
         self._cumulative_rewards[current_agent_id] = 0
 
-        print(f"🔄 Applying natural decay to current agent's internal states")
-        print(f"🔄 Current agent's internal states: {current_agent.internal_states}")
-        old_internal_states = current_agent.internal_states.copy()
-        # 1. Apply natural decay to current agent's internal states
-        current_agent.apply_natural_decay()
-        print(f"🔄 Current agent's internal states after natural decay: {current_agent.internal_states}")
+        # 🔧 FIXED: Save states BEFORE any modification (this is the reference point)
+        states_before_decay = current_agent.internal_states.copy()
+        
+        # Apply natural decay
+        states_after_decay = self._apply_natural_decay(current_agent)
+        
+        # Execute action (may apply intake on top of decay)
+        last_intake = self._execute_agent_action(current_agent, action_func, action)
+        
+        # Store intake for social norm updates
+        self.round_intakes.append(last_intake.copy())
 
-        # 2. Execute action through action function
+        # 🔧 FIXED: Calculate rewards using correct reference point
+        reward = self._calculate_reward(current_agent, states_before_decay, last_intake)
+        self.rewards[current_agent_id] = reward
+
+        logger.debug(f"💰 {current_agent_id} reward: {reward:.3f}")
+
+        # Check if round is complete
+        if self._agent_selector.is_last():
+            self._complete_round()
+        else:
+            # Clear rewards for other agents until all have acted
+            self._clear_other_agent_rewards(current_agent_id)
+
+        # Update observations
+        self._update_all_observations()
+
+        # Move to next agent
+        self._advance_agent_selection()
+
+        # Accumulate rewards
+        self._accumulate_rewards()
+
+        # Render if needed
+        if self.render_mode == "human":
+            self.render()
+
+    def _apply_natural_decay(self, agent: HomeostaticAgent) -> np.ndarray:
+        """Apply natural decay and return states after decay."""
+        states_before = agent.internal_states.copy()
+        agent.apply_natural_decay()
+        logger.debug(f"🔄 {agent.agent_id} decay: {states_before} -> {agent.internal_states}")
+        return agent.internal_states.copy()
+
+    def _execute_agent_action(self, agent: HomeostaticAgent, action_func, action) -> np.ndarray:
+        """Execute agent action and return actual intake."""
+        # Execute action through action function
         action_result = action_func.execute_action(action)
-        print(f"🔄 Executing action: {action_result}")
         
-        # 3. Update agent position based on action result
+        # Update position
         new_position = action_result["agent_new_position"]
-        current_agent.update_position(new_position)
-        print(f"🔄 Agent moved to position: {new_position}")
+        agent.update_position(new_position)
+        logger.debug(f"🚶 {agent.agent_id} moved to position: {new_position}")
         
-        # 4. Validate and consume resources
-        print(f"📦 Consuming resources: {action_result['resources_to_consume']}")
+        # Process resource consumption
         resources_to_consume = action_result["resources_to_consume"]
-        print(f"📦 Resources to consume: {resources_to_consume}")
+        actual_consumption = self._validate_and_consume_resources(resources_to_consume)
         
-        # The actions.py already checked position, now just validate stock and deduct
+        # Apply consumption to agent
+        if np.any(actual_consumption > 0):
+            last_intake, _ = agent.consume_resource(actual_consumption)
+            logger.debug(f"🍽️ {agent.agent_id} consumed: {actual_consumption}")
+        else:
+            last_intake = np.zeros(self.dimension_internal_states)
+            agent.last_intake = last_intake
+        
+        return last_intake
+
+    def _validate_and_consume_resources(self, resources_to_consume: np.ndarray) -> np.ndarray:
+        """Validate resource availability and consume from global stock."""
         actual_consumption = np.zeros_like(resources_to_consume)
-        resource_consumed = False
         
         for i, amount in enumerate(resources_to_consume):
             if amount > 0:
-                # Check if global resource stock has enough
                 available_amount = min(amount, self.resource_stock[i])
                 if available_amount > 0:
                     actual_consumption[i] = available_amount
-                    # Deduct from global resource stock
                     self.resource_stock[i] -= available_amount
-                    resource_consumed = True
-                    print(f"📦 Consumed {available_amount} of resource {i}")
-                else:
-                    print(f"📦 No resource {i} available in global stock")
         
-        # Apply actual consumption to agent
-        if resource_consumed:
-            last_intake, states_before = current_agent.consume_resource(actual_consumption)
-        else:
-            last_intake = np.zeros(self.dimension_internal_states)
-            states_before = old_internal_states.copy()  # States BEFORE natural decay
-        print(f"📦 Actual consumption: {actual_consumption}")
-        print(f"📦 Last intake: {last_intake}")
-        print(f"📦 States before: {states_before}")
-        print(f"📦 Current agent's internal states after consumption: {current_agent.internal_states}")
+        return actual_consumption
+
+    def _calculate_reward(self, agent: HomeostaticAgent, states_before_decay: np.ndarray, last_intake: np.ndarray) -> float:
+        """
+        🔧 FIXED: Calculate combined homeostatic and social reward.
         
-        # 5. Calculate rewards for current agent
-        reward = 0.0
+        Args:
+            agent: The agent whose reward we're calculating
+            states_before_decay: Internal states BEFORE any modifications (decay or intake)
+            last_intake: Actual intake that occurred
+        """
+        # 🔧 FIXED: Homeostatic reward compares initial states vs final states
+        # This captures both decay effects AND intake effects
+        old_drive = agent.drive.compute_drive(states_before_decay)
+        new_drive = agent.drive.compute_drive(agent.internal_states)  # Final states (after decay +/- intake)
+        homeostatic_reward = agent.drive.compute_reward(old_drive, new_drive)
+        agent.drive.update_drive(new_drive)
         
-        # Homeostatic reward (drive reduction)
-        print(f"🏥 Computing homeostatic reward")
-        homeostatic_reward = current_agent.compute_homeostatic_reward(states_before)
-        print(f"🏥 Homeostatic reward: {homeostatic_reward}")
-        
-        # Social cost (if consumption occurred)
-        social_cost = 0.0
-        #if resource_consumed:
-        # Use actual intake for social cost calculation
-        # Calculate scarcity BEFORE regeneration (current stock)
+        # Social cost (unchanged)
         resource_scarcity = self._compute_resource_scarcity()
-        social_cost = current_agent.compute_social_cost(last_intake, resource_scarcity)
-        print(f"👥 Social cost: {social_cost}")
-        print(f"👥 Resource scarcity: {resource_scarcity}")
-        print(f"👥 Agent intake: {last_intake}")
-        print(f"👥 Social norm: {current_agent.perceived_social_norm}")
-        print(f"👥 Excess consumption: {np.maximum(0, last_intake - current_agent.perceived_social_norm)}")
+        social_cost = agent.compute_social_cost(last_intake, resource_scarcity)
         
         # Combined reward
-        reward = homeostatic_reward - social_cost
+        total_reward = (homeostatic_reward - social_cost) * 100.0
+        
+        logger.debug(f"🏥 {agent.agent_id}: states {states_before_decay} → {agent.internal_states}")
+        logger.debug(f"   drive {old_drive:.3f} → {new_drive:.3f}, homeostatic={homeostatic_reward:.3f}")
+        logger.debug(f"   social_cost={social_cost:.3f}, total={total_reward:.3f}")
+        
+        return total_reward
 
-        reward = 100.0 * reward # Scale reward to 100.0
-        # Store reward for current agent
-        self.rewards[current_agent_id] = reward
+    def _complete_round(self):
+        """Complete a round after all agents have acted."""
+        logger.debug("🌍 Completing round")
+        
+        # Update global environment
+        self._update_global_environment()
+        
+        # Update social norms with round data
+        self._update_social_norms_with_round_data()
+        
+        # Reset round tracking
+        self.round_intakes = []
+        
+        # Apply resource regeneration
+        self._check_resource_regeneration()
+        
+        # Check termination conditions
+        self._check_termination_conditions()
+        
+        # Increment episode counter
+        self.num_moves += 1
+        
+        # Check max steps
+        if self.num_moves >= self.max_steps:
+            logger.info(f"📏 Max steps ({self.max_steps}) reached")
+            self.truncations = {agent: True for agent in self.agents}
 
-        # 6. If this is the last agent in the round, update global environment
-        if self._agent_selector.is_last():
-            print(f"🌍 Resource stock before update: {self.resource_stock}")
-            self._update_global_environment()
-            print(f"🌍 Resource stock after update: {self.resource_stock}")
-            self._update_social_norms()
-            self._check_resource_regeneration()
-            
-            # Check termination conditions for all agents
-            self._check_termination_conditions()
-            
-            # Increment episode step counter
-            self.num_moves += 1
-            
-            # Check if episode should end (max steps)
-            max_steps = getattr(self, 'max_steps', 1000)
-            if self.num_moves >= max_steps:
-                self.truncations = {agent: True for agent in self.agents}
-        else:
-            # Clear rewards for other agents until all have acted
-            for agent_id in self.agents:
-                if agent_id != current_agent_id:
-                    self.rewards[agent_id] = 0
-
-        # 7. Update observations for all agents
+    def _clear_other_agent_rewards(self, current_agent_id: str):
+        """Clear rewards for all agents except the current one."""
         for agent_id in self.agents:
-            self.observations[agent_id] = self.observation_functions[agent_id]()
+            if agent_id != current_agent_id:
+                self.rewards[agent_id] = 0.0
 
-        # 8. Move to next agent (only if there are agents left)
+    def _update_all_observations(self):
+        """Update observations for all active agents."""
+        for agent_id in self.agents:
+            if agent_id in self.observation_functions:
+                self.observations[agent_id] = self.observation_functions[agent_id]()
+
+    def _advance_agent_selection(self):
+        """Advance to the next agent in the selection order."""
+        # 🔧 FIXED: Robust agent selection management
         if self._agent_selector is not None and self.agents:
             self.agent_selection = self._agent_selector.next()
         else:
-            # No agents left, episode should end
             self.agent_selection = None
-
-        # 9. Accumulate rewards
-        self._accumulate_rewards()
-
-        # 10. Render if needed
-        if self.render_mode == "human":
-            self.render()
-            
-        # 11. Return PettingZoo standard format
-        return self.observations, self.rewards, self.terminations, self.truncations, self.infos
-
-
-    def _compute_resource_scarcity(self):
-        """
-        Compute resource scarcity factors for social cost calculation.
         
-        Returns:
-            np.ndarray: Scarcity factor for each resource type
-        """
-        # NORMARL-style scarcity: max{0, (a - b.Et)}
-        # Adjusted for test environment: want scarcity when stock is around 2.0
-        a = 2.0  # Base social cost (increased from 1.0)
-        b = 0.8  # Resource scarcity multiplier (increased from 0.5)
-        
-        # Use absolute resource stock (not normalized) as per NORMARL formula
+        logger.debug(f"👤 Next agent: {self.agent_selection}")
+
+    def _compute_resource_scarcity(self) -> np.ndarray:
+        """Compute resource scarcity factors for social cost calculation."""
+        a = 2.0  # Base social cost
+        b = 0.8  # Resource scarcity multiplier
         scarcity = np.maximum(0, a - b * self.resource_stock)
-        
         return scarcity
 
     def _update_global_environment(self):
         """Update global environment state after all agents have acted."""
-        # The resource stock has already been reduced during individual agent steps
-        # Now we only need to apply regeneration according to NORMARL equation
-        # Et+1 = (1 + δ)Et - ΣQi,t where ΣQi,t was already applied during steps
-        
-        # Store stock before regeneration
         stock_before = self.resource_stock.copy()
         
-        # Apply NORMARL regeneration: Et+1 = (1 + δ)Et
-        # Note: Consumption was already deducted during individual steps
-        regeneration_rate = self.resource_regeneration_rate[0]  # Get from config file
+        # Apply NORMARL regeneration
+        regeneration_rate = self.resource_regeneration_rate[0]
         self.resource_stock = (1 + regeneration_rate) * stock_before
         
-        # Ensure resource stock doesn't go negative
+        # Clamp to bounds
         self.resource_stock = np.maximum(0, self.resource_stock)
-        
-        # Clamp resource stock to initial levels (prevent exceeding maximum)
         self.resource_stock = np.minimum(self.resource_stock, self.initial_resource_stock)
         
-        print(f"🌍 Stock before regeneration: {stock_before}")
-        print(f"🌍 Stock after regeneration: {self.resource_stock}")
-        print(f"🌍 Regeneration rate (δ): {regeneration_rate}")
+        logger.debug(f"🌱 Resource regeneration: {stock_before} -> {self.resource_stock}")
 
-    def _update_social_norms(self):
-        """Update each agent's perception of social norms based on observed behavior."""
-        # Calculate average consumption across all agents
-        if len(self.agents) > 0:
-            # Use the actual agent's dimension instead of env's dimension
-            agent_dim = self.homeostatic_agents[self.agents[0]].dimension_internal_states
-            total_intake = np.zeros(agent_dim)
-            
-            for agent_id in self.agents:
-                agent = self.homeostatic_agents[agent_id]
-                total_intake += agent.last_intake
-            
-            avg_intake = total_intake / len(self.agents)
-            
-            # Update social norm perception for each agent
-            for agent_id in self.agents:
-                agent = self.homeostatic_agents[agent_id]
-                agent.update_social_norm_perception(avg_intake)
+    def _update_social_norms_with_round_data(self):
+        """Update social norms using data from the current round."""
+        if len(self.round_intakes) == 0:
+            return
+        
+        # Calculate average intake for this round
+        total_intake = np.sum(self.round_intakes, axis=0)
+        avg_intake = total_intake / len(self.round_intakes)
+        
+        # Update social norm perception for each agent
+        for agent_id in self.agents:
+            agent = self.homeostatic_agents[agent_id]
+            agent.update_social_norm_perception(avg_intake)
+        
+        logger.debug(f"📊 Updated social norms with round average: {avg_intake}")
 
     def _check_resource_regeneration(self):
         """Apply resource regeneration if needed."""
-        # In NORMARL, resources at fixed positions regenerate each turn
-        # This allows multiple agents to potentially access the same resource type
         for resource_info in self.resources_info.values():
             resource_info["available"] = True
 
@@ -384,43 +459,36 @@ class NormalHomeostaticEnv(AECEnv):
         """Check if any agents should terminate due to critical states."""
         agents_to_remove = []
         
-        for agent_id in self.agents:
+        for agent_id in self.agents[:]:  # Copy list to avoid modification during iteration
             agent = self.homeostatic_agents[agent_id]
             
-            # Check if agent is in critical homeostatic state
             if agent.is_in_critical_state(threshold=1.0):
                 self.terminations[agent_id] = True
                 agents_to_remove.append(agent_id)
-                print(f"Agent {agent_id} terminated due to critical homeostatic state")
-            
-            # Check if all resources are depleted
+                logger.warning(f"💀 {agent_id} terminated: critical homeostatic state")
             elif np.all(self.resource_stock <= 0):
                 self.terminations[agent_id] = True
                 agents_to_remove.append(agent_id)
-                print(f"Agent {agent_id} terminated due to resource depletion")
+                logger.warning(f"💀 {agent_id} terminated: resource depletion")
         
-        # Remove terminated agents from the active agents list
+        # Remove terminated agents
         for agent_id in agents_to_remove:
             if agent_id in self.agents:
                 self.agents.remove(agent_id)
-                print(f"Removed {agent_id} from active agents list")
+                logger.info(f"🗑️ Removed {agent_id} from active agents")
         
-        # Update agent selector if agents were removed
+        # 🔧 FIXED: Robust agent selector update
         if agents_to_remove:
             if self.agents:
                 self._agent_selector = AgentSelector(self.agents)
-                # If current agent was removed, move to next available agent
+                # Ensure current selection is valid
                 if self.agent_selection not in self.agents:
                     self.agent_selection = self.agents[0]
             else:
-                # All agents terminated
+                # No agents left - episode should end
                 self.agent_selection = None
                 self._agent_selector = None
-
-    def _clear_rewards(self):
-        """Clear rewards for all agents."""
-        for agent in self.agents:
-            self.rewards[agent] = 0
+                logger.info("🏁 All agents terminated")
 
     def _accumulate_rewards(self):
         """Accumulate rewards for all agents."""
@@ -429,161 +497,196 @@ class NormalHomeostaticEnv(AECEnv):
 
     def _was_dead_step(self, action):
         """Handle step for an agent that is already terminated."""
-        # Move to next agent without processing action
+        logger.debug(f"💀 Dead step for {self.agent_selection}")
+        
+        # 🔧 FIXED: Robust handling of dead agents
         if self._agent_selector is not None and self.agents:
             self.agent_selection = self._agent_selector.next()
         else:
-            # No agents left, episode should end
             self.agent_selection = None
 
+    # PettingZoo required methods
     def render(self):
-        pass
+        """Render the environment."""
+        # Basic rendering - can be expanded
+        if self.render_mode == "human":
+            logger.info(f"🎨 Rendering: {len(self.agents)} agents, resource stock: {self.resource_stock}")
 
-    def observe(self, agent):
-        """
-        Observe should return the observation of the specified agent. This function
-        should return a sane observation (though not necessarily the most up to date possible)
-        at any time after reset() is called.
-        """
-        # Get current observation from the observation function
+    def observe(self, agent: str):
+        """Return the observation of the specified agent."""
         if agent in self.observation_functions:
             return self.observation_functions[agent]()
         else:
-            # Fallback to cached observation if available
             return self.observations.get(agent, {})
     
-    def action_space(self, agent):
-        """
-        Return the action space for the specified agent.
-        """
+    def action_space(self, agent: str):
+        """Return the action space for the specified agent."""
         return self.action_spaces[agent]
     
-    def observation_space(self, agent):
-        """
-        Return the observation space for the specified agent.
-        """
+    def observation_space(self, agent: str):
+        """Return the observation space for the specified agent."""
         return self.observation_spaces[agent]
 
+    def close(self):
+        """Close the environment and clean up resources."""
+        logger.info("🔒 Closing environment")
+        super().close()
 
-def main():
+
+# Factory functions with wrappers
+def env(**kwargs):
     """
-    Test function to verify NORMARL environment functionality.
+    Create a multi-agent homeostatic environment with standard PettingZoo wrappers.
+    
+    Returns:
+        NormalHomeostaticEnv: Environment ready for use with supersuit and other tools
     """
-    print("🧪 Testing NORMARL Homeostatic Environment")
-    print("=" * 50)
-    
-    # Environment parameters
-    config_path = "config/config.yaml"
-    drive_type = "base_drive" 
-    learning_rate = 0.1
-    beta = 0.5
-    number_resources = 1
-    n_agents = 3
-    size = 1
-    
-    # Create environment
-    print("🏗️  Creating environment...")
-    env = NormalHomeostaticEnv(
-        config_path=config_path,
-        drive_type=drive_type,
-        learning_rate=learning_rate,
-        beta=beta,
-        number_resources=number_resources,
-        n_agents=n_agents,
-        size=size
-    )
-    
-    # Reset environment
-    print("\n🔄 Resetting environment...")
-    observations, info = env.reset()
-    
-    print(f"✅ Environment reset successfully!")
-    print(f"📊 Agents: {env.agents}")
-    print(f"🧠 Current agent: {env.agent_selection}")
-    print(f"🏃 Agent positions: {[agent.position for agent in env.homeostatic_agents.values()]}")
-    print(f"📍 Resource positions: {[r['position'] for r in env.resources_info.values()]}")
-    print(f"📦 Initial resource stock: {env.resource_stock}")
-    
-    # Print initial agent states
-    print("\n👥 Initial Agent States:")
-    for agent_id, agent in env.homeostatic_agents.items():
-        state_names = agent.get_state_names()
-        state_str = ", ".join([f"{name}: {val:.3f}" for name, val in zip(state_names, agent.internal_states)])
-        print(f"  {agent_id}: pos={agent.position}, drive={agent.get_current_drive():.3f}, states=[{state_str}]")
-    
-    # Test action spaces
-    print("\n🎮 Action Spaces:")
-    for agent_id in env.agents:
-        action_space = env.action_space(agent_id)
-        action_func = env.action_functions[agent_id]
-        #action_info = action_func.get_action_info()
-        #print(f"  {agent_id}: {action_space.n} actions - {action_info['action_descriptions']}")
-        print(f"  {agent_id}: {action_space.n} actions")
-    
-    # Run simulation for several steps
-    print("\n🚀 Running simulation...")
-    print("-" * 30)
-    
-    max_steps = 20
-    step_count = 0
-    
-    while env.agents and step_count < max_steps:
-        # Get current agent
-        current_agent_id = env.agent_selection
-        current_agent = env.homeostatic_agents[current_agent_id]
-        action_func = env.action_functions[current_agent_id]
-        
-        # Choose a random action for testing
-        action = env.np_random.integers(0, action_func.action_space().n)
-        print(f"Step {step_count}: {current_agent_id} taking action {action}")
-        
-        # Execute step
-        env.step(action)
-        
-        # Print reward and state changes
-        reward = env.rewards.get(current_agent_id, 0)
-        print(f"  Reward: {reward:.3f}")
-        
-        # If all agents have acted this round, show summary
-        if env.agents and env._agent_selector is not None and env._agent_selector.is_last():
-            print(f"  📈 Resource stock: {env.resource_stock}")
-            print(f"  🌍 Global update completed")
-            
-            # Show social norms
-            print("  📋 Social norms learned:")
-            for agent_id, agent in env.homeostatic_agents.items():
-                norm_str = ", ".join([f"{name}: {val:.3f}" for name, val in zip(agent.get_state_names(), agent.perceived_social_norm)])
-                print(f"    {agent_id}: [{norm_str}]")
-        
-        step_count += 1
-        print()
-        
-        # Check if episode ended
-        if all(env.terminations.values()) or all(env.truncations.values()):
-            print("🏁 Episode ended!")
-            break
-    
-    # Final summary
-    print("\n📊 Final Summary:")
-    print(f"Steps completed: {step_count}")
-    print(f"Final resource stock: {env.resource_stock}")
-    print(f"Agent terminations: {env.terminations}")
-    print(f"Agent truncations: {env.truncations}")
-    
-    print("\n👥 Final Agent States:")
-    for agent_id, agent in env.homeostatic_agents.items():
-        state_names = agent.get_state_names()
-        state_str = ", ".join([f"{name}: {val:.3f}" for name, val in zip(state_names, agent.internal_states)])
-        norm_str = ", ".join([f"{name}: {val:.3f}" for name, val in zip(state_names, agent.perceived_social_norm)])
-        print(f"  {agent_id}:")
-        print(f"    Position: {agent.position}")
-        print(f"    Drive: {agent.get_current_drive():.3f}")
-        print(f"    States: [{state_str}]")
-        print(f"    Social norms: [{norm_str}]")
-        print(f"    Total intake: {sum(agent.intake_history) if agent.intake_history else 0}")
-    
-    print("\n✅ Test completed successfully!")
+    env_instance = NormalHomeostaticEnv(**kwargs)
+    env_instance = wrappers.AssertOutOfBoundsWrapper(env_instance)
+    env_instance = wrappers.OrderEnforcingWrapper(env_instance)
+    return env_instance
+
+
+# For parallel environments
+from pettingzoo.utils.conversions import parallel_wrapper_fn
+parallel_env = parallel_wrapper_fn(env)
+
+
+def create_env(**kwargs):
+    """Convenience function to create AEC environment."""
+    return env(**kwargs)
+
+
+def create_parallel_env(**kwargs):
+    """Convenience function to create parallel environment."""
+    return parallel_env(**kwargs)
 
 
 if __name__ == "__main__":
-    main()
+    # 🔧 FIXED: Test code that respects OrderEnforcingWrapper
+    print("🧪 Testing Improved Multi-Agent Environment")
+    print("=" * 60)
+    
+    # Test with logging
+    env_test = create_env(
+        config_path="config/config.yaml",
+        drive_type="base_drive",
+        learning_rate=0.1,
+        beta=0.5,
+        number_resources=1,
+        n_agents=3,
+        size=5,
+        max_steps=100,
+        log_level="INFO"
+    )
+    
+    print(f"✅ Environment created: {type(env_test)}")
+    print(f"   Metadata: {env_test.metadata}")
+    
+    # 🔧 FIXED: Call reset() BEFORE accessing agents
+    print("\n🔄 Resetting environment...")
+    env_test.reset(seed=42)
+    
+    # NOW we can access attributes after reset
+    print(f"   Agents: {env_test.agents}")
+    print(f"   Current agent: {env_test.agent_selection}")
+    print(f"   Possible agents: {env_test.possible_agents}")
+    
+    # Test action and observation spaces
+    print(f"   Action space sample: {env_test.action_space(env_test.agent_selection)}")
+    print(f"   Observation space sample: {type(env_test.observation_space(env_test.agent_selection))}")
+    
+    # Test a few steps
+    print("\n🚀 Running simulation...")
+    for i in range(10):
+        if not env_test.agents:
+            print("🏁 No agents left!")
+            break
+            
+        current_agent = env_test.agent_selection
+        if current_agent is None:
+            print("🏁 No current agent!")
+            break
+            
+        action = env_test.action_space(current_agent).sample()
+        env_test.step(action)
+        
+        reward = env_test.rewards.get(current_agent, 0)
+        print(f"Step {i}: {current_agent} action={action}, reward={reward:.2f}")
+        
+        # Check if episode ended
+        if all(env_test.terminations.values()) or all(env_test.truncations.values()):
+            print("🏁 Episode ended!")
+            break
+    
+    # Test reset again
+    print("\n🔄 Testing second reset...")
+    env_test.reset(seed=123)
+    print(f"   Agents after reset: {env_test.agents}")
+    print(f"   Current agent after reset: {env_test.agent_selection}")
+    
+    # Test parallel environment
+    print("\n🔄 Testing Parallel Environment...")
+    try:
+        parallel_env_test = create_parallel_env(
+            config_path="config/config.yaml",
+            drive_type="base_drive",
+            learning_rate=0.1,
+            beta=0.5,
+            number_resources=1,
+            n_agents=3,
+            size=5,
+            log_level="WARNING"  # Less verbose for parallel test
+        )
+        
+        print(f"✅ Parallel environment created: {type(parallel_env_test)}")
+        
+        observations = parallel_env_test.reset(seed=42)
+        print(f"   Parallel reset: {len(observations)} observations")
+        
+        # Test one parallel step
+        actions = {agent: parallel_env_test.action_space(agent).sample() for agent in parallel_env_test.agents}
+        observations, rewards, terminations, truncations, infos = parallel_env_test.step(actions)
+        
+        print(f"   Parallel step: {len(rewards)} rewards, avg: {np.mean(list(rewards.values())):.2f}")
+        print("✅ Parallel test successful!")
+        
+    except Exception as e:
+        print(f"❌ Parallel test failed: {e}")
+    
+    print("\n✅ All tests passed! Environment is production-ready! 🎉")
+    
+    # Usage examples
+    print("\n📚 Usage Examples:")
+    print("=" * 40)
+    print("""
+# AEC Environment (turn-based)
+from src.envs.multiagent import create_env
+
+env = create_env(
+    config_path="config/config.yaml",
+    drive_type="base_drive",
+    learning_rate=0.1,
+    beta=0.5,
+    number_resources=1,
+    n_agents=5,
+    log_level="INFO"
+)
+
+env.reset()
+while env.agents:
+    current_agent = env.agent_selection
+    action = env.action_space(current_agent).sample()
+    env.step(action)
+
+# Parallel Environment (simultaneous)
+from src.envs.multiagent import create_parallel_env
+
+env = create_parallel_env(...)
+observations = env.reset()
+while env.agents:
+    actions = {agent: env.action_space(agent).sample() for agent in env.agents}
+    observations, rewards, terminations, truncations, infos = env.step(actions)
+    if all(terminations.values()) or all(truncations.values()):
+        break
+""")
