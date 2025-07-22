@@ -2,7 +2,7 @@ import numpy as np
 import pickle
 import os
 
-from ..utils.e_greedy import epsilon_greedy_policy
+from ..src.utils.e_greedy import epsilon_greedy_policy
 
 class QLearning:
     """

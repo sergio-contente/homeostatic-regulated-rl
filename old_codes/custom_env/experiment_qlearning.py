@@ -1,6 +1,6 @@
 import numpy as np
 from src.custom_env.homeoenv import HomeoEnv
-from ...agents.q_learning import QLearning
+from ....old_codes.q_learning import QLearning
 
 def main():
     # === Parameters for discretization ===

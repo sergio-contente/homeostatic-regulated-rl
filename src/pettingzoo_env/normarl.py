@@ -9,9 +9,9 @@ from gymnasium.utils import seeding
 from pettingzoo.utils import AgentSelector, wrappers
 
 from src.utils.resource_manager import GlobalResourceManager
-from .homeostatic_agent import HomeostaticAgent
-from .actions import DefaultHomeostaticAction
-from .observations import DefaultHomeostaticObservation
+from ..agents.homeostatic_agent import HomeostaticAgent
+from ..agents.actions import DefaultHomeostaticAction
+from ..agents.observations import DefaultHomeostaticObservation
 
 class NormalHomeostaticEnv(AECEnv):
     metadata = {
