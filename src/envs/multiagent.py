@@ -231,7 +231,6 @@ class NormalHomeostaticEnv(AECEnv):
         
         logger.info(f"🔄 Environment reset with {len(self.agents)} agents")
         
-        # 🔧 FIXED: Return None for AECEnv compatibility
         return None
 
     def step(self, action):
@@ -253,7 +252,7 @@ class NormalHomeostaticEnv(AECEnv):
         # Reset cumulative rewards for current agent
         self._cumulative_rewards[current_agent_id] = 0
 
-        # 🔧 FIXED: Save states BEFORE any modification (this is the reference point)
+        # Save states BEFORE any modification (this is the reference point)
         states_before_decay = current_agent.internal_states.copy()
         
         # Apply natural decay
@@ -299,7 +298,7 @@ class NormalHomeostaticEnv(AECEnv):
         return agent.internal_states.copy()
 
     def _execute_agent_action(self, agent: HomeostaticAgent, action_func, action) -> np.ndarray:
-        """Execute agent action and return actual intake."""
+        """Execute agent action and return actual intake - ECONOMIC MODEL."""
         # Execute action through action function
         action_result = action_func.execute_action(action)
         
@@ -308,31 +307,38 @@ class NormalHomeostaticEnv(AECEnv):
         agent.update_position(new_position)
         logger.debug(f"🚶 {agent.agent_id} moved to position: {new_position}")
         
-        # Process resource consumption
+        # Process resource consumption - BUT DON'T SUBTRACT FROM STOCK YET!
         resources_to_consume = action_result["resources_to_consume"]
-        actual_consumption = self._validate_and_consume_resources(resources_to_consume)
+        actual_consumption = self._validate_consumption_capacity(resources_to_consume)
         
-        # Apply consumption to agent
+        # Apply consumption to agent (internal states)
         if np.any(actual_consumption > 0):
             last_intake, _ = agent.consume_resource(actual_consumption)
-            logger.debug(f"🍽️ {agent.agent_id} consumed: {actual_consumption}")
+            logger.debug(f"🍽️ {agent.agent_id} consumed: {actual_consumption} (queued for economic formula)")
         else:
             last_intake = np.zeros(self.dimension_internal_states)
             agent.last_intake = last_intake
         
         return last_intake
 
-    def _validate_and_consume_resources(self, resources_to_consume: np.ndarray) -> np.ndarray:
-        """Validate resource availability and consume from global stock."""
+    def _validate_consumption_capacity(self, resources_to_consume: np.ndarray) -> np.ndarray:
+        """
+        Validate if consumption is possible WITHOUT subtracting from stock.
+        
+        For economic model: Et+1 = (1 + δ)Et - Σ Qi_t
+        We need to accumulate all Qi_t and subtract them together during regeneration.
+        """
         actual_consumption = np.zeros_like(resources_to_consume)
         
         for i, amount in enumerate(resources_to_consume):
             if amount > 0:
+                # Check if resource is available, but DON'T subtract yet
                 available_amount = min(amount, self.resource_stock[i])
                 if available_amount > 0:
                     actual_consumption[i] = available_amount
-                    self.resource_stock[i] -= available_amount
-        
+                    # 🔧 CRITICAL: Do NOT subtract from resource_stock here!
+                    # Will be subtracted in _check_resource_regeneration()
+    
         return actual_consumption
 
     def _calculate_reward(self, agent: HomeostaticAgent, states_before_decay: np.ndarray, last_intake: np.ndarray) -> float:
@@ -451,7 +457,39 @@ class NormalHomeostaticEnv(AECEnv):
         logger.debug(f"📊 Updated social norms with round average: {avg_intake}")
 
     def _check_resource_regeneration(self):
-        """Apply resource regeneration if needed."""
+        """
+        Apply economic formula: Et+1 = (1 + δ)Et - Σ Qi_t
+        
+        This implements the exact formula from the economics paper where:
+        - Et = current resource stock
+        - δ = regeneration rate (e.g., 0.02 = 2%)  
+        - Σ Qi_t = total consumption by all agents this round
+        """
+        # Calculate total consumption this round: Σ Qi_t
+        total_consumption = np.sum([np.sum(intake) for intake in self.round_intakes])
+        
+        old_stock = self.resource_stock.copy()
+        regeneration_rates = self.resource_regeneration_rate # Use the rate from the manager
+        
+        # 🏛️ Apply economic formula EXACTLY: Et+1 = (1 + δ)Et - Σ Qi_t
+        new_stock = (1 + regeneration_rates) * self.resource_stock - total_consumption
+        
+        # Apply constraints (non-negative and carrying capacity)
+        if not hasattr(self, '_max_resource_capacity'):
+            self._max_resource_capacity = old_stock.copy()
+        
+        # Ensure stock doesn't go below zero or above carrying capacity
+        self.resource_stock = np.minimum(
+            np.maximum(0, new_stock), 
+            self._max_resource_capacity
+        )
+        
+        # Logging for verification
+        logger.debug(f"🏛️ Economic formula: Et={(old_stock[0]):.3f}, "
+                    f"δ={regeneration_rates[0]:.3f}, ΣQ={total_consumption:.3f}")
+        logger.debug(f"🏛️ Result: ({1 + regeneration_rates[0]:.3f})*{old_stock[0]:.3f} - {total_consumption:.3f} = {self.resource_stock[0]:.3f}")
+        
+        # Mark resources as available for next round
         for resource_info in self.resources_info.values():
             resource_info["available"] = True
 
@@ -499,7 +537,6 @@ class NormalHomeostaticEnv(AECEnv):
         """Handle step for an agent that is already terminated."""
         logger.debug(f"💀 Dead step for {self.agent_selection}")
         
-        # 🔧 FIXED: Robust handling of dead agents
         if self._agent_selector is not None and self.agents:
             self.agent_selection = self._agent_selector.next()
         else:
