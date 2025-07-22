@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from collections import deque
 import pandas as pd
 
-import src.gymnasium_env  # Import your custom environment
+import src.envs  # Import your custom environment
 
 # Path to the saved model
 model_path = "runs/DQN_LimitedResources_base_drive_20250520-173208/dqn_model.pth"

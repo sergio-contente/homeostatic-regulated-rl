@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 import numpy as np
-from src.pettingzoo_env.normarl import NormalHomeostaticEnv
+from src.envs.multiagent import NormalHomeostaticEnv
 from pettingzoo.utils.conversions import aec_to_parallel
 from pettingzoo.test import parallel_api_test
 

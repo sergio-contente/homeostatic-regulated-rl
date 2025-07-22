@@ -8,7 +8,7 @@ import cv2
 from datetime import datetime
 from gymnasium.wrappers import FlattenObservation
 from stable_baselines3 import DQN
-import src.gymnasium_env  # register LimitedResources2DEnv
+import src.envs  # register LimitedResources2DEnv
 
 # === CONFIG ===
 config_path = "config/config.yaml"

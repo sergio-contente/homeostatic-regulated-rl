@@ -9,7 +9,7 @@ import pygame
 import cv2
 from datetime import datetime
 
-import src.gymnasium_env  # Import your custom environment
+import src.envs  # Import your custom environment
 
 # Path to the saved model
 model_path = "runs/DQN_GridWorld_base_drive_20250514-004659/dqn_model.pth"

@@ -10,7 +10,7 @@ from pettingzoo.utils.conversions import parallel_wrapper_fn
 import gymnasium as gym
 import time
 from datetime import datetime
-from src.pettingzoo_env.normarl import NormalHomeostaticEnv
+from src.envs.multiagent import NormalHomeostaticEnv
 
 class RewardShapingWrapper(gym.Wrapper):
     """Wrapper to add consumption incentives"""

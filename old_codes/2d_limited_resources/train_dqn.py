@@ -15,7 +15,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
-import src.gymnasium_env
+import src.envs
 
 config_path = "config/config.yaml"
 drive_type = "base_drive"

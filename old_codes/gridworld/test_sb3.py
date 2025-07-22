@@ -8,7 +8,7 @@ import cv2
 from datetime import datetime
 from gymnasium.wrappers import FlattenObservation
 from stable_baselines3 import DQN
-import src.gymnasium_env  # your custom environment
+import src.envs  # your custom environment
 
 # === CONFIG ===
 config_path = "config/config.yaml"

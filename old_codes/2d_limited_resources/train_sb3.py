@@ -9,7 +9,7 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
 from torch.utils.tensorboard import SummaryWriter
 
-import src.gymnasium_env  # registers custom env
+import src.envs  # registers custom env
 
 # === CONFIGURATION ===
 config_path = "config/config.yaml"

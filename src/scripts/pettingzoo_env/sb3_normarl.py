@@ -11,7 +11,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.ppo import MlpPolicy
 from pettingzoo.utils.conversions import aec_to_parallel
 
-from src.pettingzoo_env.normarl import NormalHomeostaticEnv
+from src.envs.multiagent import NormalHomeostaticEnv
 
 
 def train(env_fn, steps: int = 100_000, seed: int = 0, **env_kwargs):

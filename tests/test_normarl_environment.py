@@ -9,7 +9,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
 import numpy as np
-from src.pettingzoo_env.normarl import NormalHomeostaticEnv
+from src.envs.multiagent import NormalHomeostaticEnv
 
 def test_environment_initialization():
     """Test that the environment initializes correctly."""
