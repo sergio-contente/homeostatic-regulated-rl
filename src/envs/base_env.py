@@ -6,7 +6,7 @@ from src.utils.get_params import ParameterHandler
 from src.utils.resource_manager import GlobalResourceManager
 
 
-class NormarlHomeostaticEnv(gym.Env):
+class NormarlHomeostaticBaseEnv(gym.Env):
     """
     Single-agent homeostatic environment with social norms.
     Integrates NORMARL's social cost mechanism with homeostatic drives.
@@ -14,11 +14,13 @@ class NormarlHomeostaticEnv(gym.Env):
     """
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
-    def __init__(self, config_path, drive_type, social_learning_rate, beta, render_mode=None, size=10):
+    def __init__(self, config_path, drive_type, social_learning_rate, beta, single_agent=True, render_mode=None, size=10):
         self.param_manager = ParameterHandler(config_path)
         self.drive_type = drive_type
         self.size = size  # The size of the 1D grid
         self.window_size = 800
+        
+        self.single_agent = single_agent
         
         # Initialize drive
         self.drive = self.param_manager.create_drive(drive_type)

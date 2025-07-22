@@ -1,7 +1,7 @@
 import yaml
-from ..drives.base_drive import BaseDrive
-from ..drives.interoceptive_drive import InteroceptiveModulationDrive
-from ..drives.elliptic_drive import EllipticDrive
+from src.envs.drives.base_drive import BaseDrive
+from src.envs.drives.interoceptive_drive import InteroceptiveModulationDrive
+from src.envs.drives.elliptic_drive import EllipticDrive
 
 class ParameterHandler():
 	def __init__(self, parameter_path):
