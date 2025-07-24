@@ -50,7 +50,8 @@ class NormalHomeostaticEnv(AECEnv):
         size: int = 10,
         max_steps: int = 1000,
         seed: Optional[int] = None,
-        log_level: str = "INFO"
+        log_level: str = "INFO",
+        initial_resource_stock: Optional[float] = None
     ):
         """
         Initialize the improved multi-agent homeostatic environment.
@@ -67,6 +68,7 @@ class NormalHomeostaticEnv(AECEnv):
             max_steps: Maximum steps per episode
             seed: Random seed for reproducibility
             log_level: Logging level ("DEBUG", "INFO", "WARNING", "ERROR")
+            initial_resource_stock: Initial resource amount per type (default: 3.0)
         """
         super().__init__()
         
@@ -101,7 +103,9 @@ class NormalHomeostaticEnv(AECEnv):
         self.global_resource_manager = GlobalResourceManager(config_path, drive_type)
         
         # Resource stock (NORMARL-style shared resource pool)
-        self.initial_resource_stock = np.ones(number_resources) * 3.0
+        # 🔧 FIXED: Use configurable initial resource stock instead of hardcoded 3.0
+        resource_amount = initial_resource_stock if initial_resource_stock is not None else 3.0
+        self.initial_resource_stock = np.ones(number_resources) * resource_amount
         self.resource_stock = self.initial_resource_stock.copy()
         self.resource_regeneration_rate = self.global_resource_manager.get_resource_stock_regeneration_array()
         
@@ -479,14 +483,12 @@ class NormalHomeostaticEnv(AECEnv):
         # 🏛️ Apply economic formula EXACTLY: Et+1 = (1 + δ)Et - Σ Qi_t
         new_stock = (1 + regeneration_rates) * self.resource_stock - total_consumption
         
-        # Apply constraints (non-negative and carrying capacity)
-        if not hasattr(self, '_max_resource_capacity'):
-            self._max_resource_capacity = old_stock.copy()
-        
-        # Ensure stock doesn't go below zero or above carrying capacity
+        # Apply constraints (non-negative and natural carrying capacity)
+        # 🔧 FIXED: Use initial stock as natural ecological carrying capacity
+        # Resources can regenerate but cannot exceed the natural sustainable level
         self.resource_stock = np.minimum(
             np.maximum(0, new_stock), 
-            self._max_resource_capacity
+            self.initial_resource_stock  # Natural carrying capacity
         )
         
         # Logging for verification
@@ -581,6 +583,9 @@ def env(**kwargs):
     """
     Create a multi-agent homeostatic environment with standard PettingZoo wrappers.
     
+    Args:
+        **kwargs: All arguments for NormalHomeostaticEnv including initial_resource_stock
+    
     Returns:
         NormalHomeostaticEnv: Environment ready for use with supersuit and other tools
     """
@@ -606,11 +611,10 @@ def create_parallel_env(**kwargs):
 
 
 if __name__ == "__main__":
-    # 🔧 FIXED: Test code that respects OrderEnforcingWrapper
     print("🧪 Testing Improved Multi-Agent Environment")
     print("=" * 60)
     
-    # Test with logging
+    # Test with logging and custom resource stock
     env_test = create_env(
         config_path="config/config.yaml",
         drive_type="base_drive",
@@ -620,7 +624,8 @@ if __name__ == "__main__":
         n_agents=3,
         size=5,
         max_steps=100,
-        log_level="INFO"
+        log_level="INFO",
+        initial_resource_stock=1000.0  # 🔧 Example of custom resource stock
     )
     
     print(f"✅ Environment created: {type(env_test)}")
@@ -679,7 +684,8 @@ if __name__ == "__main__":
             number_resources=1,
             n_agents=3,
             size=5,
-            log_level="WARNING"  # Less verbose for parallel test
+            log_level="WARNING",  # Less verbose for parallel test
+            initial_resource_stock=500.0  # 🔧 Example with different resource scale
         )
         
         print(f"✅ Parallel environment created: {type(parallel_env_test)}")
@@ -713,7 +719,8 @@ env = create_env(
     beta=0.5,
     number_resources=1,
     n_agents=5,
-    log_level="INFO"
+    log_level="INFO",
+    initial_resource_stock=1000.0  # Custom initial resources
 )
 
 env.reset()
