@@ -377,14 +377,15 @@ class NormalHomeostaticEnv(AECEnv):
         # Update global environment
         self._update_global_environment()
         
+        # 🔧 FIXED: Apply resource regeneration BEFORE resetting round_intakes
+        # Apply resource regeneration (uses round_intakes data)
+        self._check_resource_regeneration()
+        
         # Update social norms with round data
         self._update_social_norms_with_round_data()
         
-        # Reset round tracking
+        # Reset round tracking AFTER using the data
         self.round_intakes = []
-        
-        # Apply resource regeneration
-        self._check_resource_regeneration()
         
         # Check termination conditions
         self._check_termination_conditions()
@@ -430,15 +431,19 @@ class NormalHomeostaticEnv(AECEnv):
         """Update global environment state after all agents have acted."""
         stock_before = self.resource_stock.copy()
         
+        # 🔧 FIXED: Removed double regeneration - this is now handled in _check_resource_regeneration()
         # Apply NORMARL regeneration
-        regeneration_rate = self.resource_regeneration_rate[0]
-        self.resource_stock = (1 + regeneration_rate) * stock_before
+        # regeneration_rate = self.resource_regeneration_rate[0]
+        # self.resource_stock = (1 + regeneration_rate) * stock_before
         
-        # Clamp to bounds
-        self.resource_stock = np.maximum(0, self.resource_stock)
-        self.resource_stock = np.minimum(self.resource_stock, self.initial_resource_stock)
+        # 🔧 FIXED: No regeneration here - only in _check_resource_regeneration()
+        # Resources will be updated properly with economic formula: Et+1 = (1 + δ)Et - Σ Qi_t
         
-        logger.debug(f"🌱 Resource regeneration: {stock_before} -> {self.resource_stock}")
+        # Clamp to bounds (moved to _check_resource_regeneration)
+        # self.resource_stock = np.maximum(0, self.resource_stock)
+        # self.resource_stock = np.minimum(self.resource_stock, self.initial_resource_stock)
+        
+        logger.debug(f"🌱 Global environment updated (regeneration handled separately): {stock_before}")
 
     def _update_social_norms_with_round_data(self):
         """Update social norms using data from the current round."""
@@ -485,9 +490,10 @@ class NormalHomeostaticEnv(AECEnv):
         )
         
         # Logging for verification
-        logger.debug(f"🏛️ Economic formula: Et={(old_stock[0]):.3f}, "
+        logger.info(f"🏛️ Economic formula: Et={(old_stock[0]):.3f}, "
                     f"δ={regeneration_rates[0]:.3f}, ΣQ={total_consumption:.3f}")
-        logger.debug(f"🏛️ Result: ({1 + regeneration_rates[0]:.3f})*{old_stock[0]:.3f} - {total_consumption:.3f} = {self.resource_stock[0]:.3f}")
+        logger.info(f"🏛️ Result: ({1 + regeneration_rates[0]:.3f})*{old_stock[0]:.3f} - {total_consumption:.3f} = {self.resource_stock[0]:.3f}")
+        logger.info(f"🏛️ Round intakes count: {len(self.round_intakes)}, intakes: {self.round_intakes}")
         
         # Mark resources as available for next round
         for resource_info in self.resources_info.values():
