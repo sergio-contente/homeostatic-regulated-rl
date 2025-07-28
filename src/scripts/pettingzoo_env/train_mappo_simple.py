@@ -46,7 +46,7 @@ class SimpleArgs:
     total_timesteps: int = 100_000  # Reduced for faster testing
     learning_rate: float = 3e-4
     num_envs: int = 1  # Start with 1 environment
-    num_steps: int = 64  # Reduced rollout length
+    num_steps: int = 200  # Complete rounds: 20 rounds * 10 agents = 200 steps
     gamma: float = 0.99
     gae_lambda: float = 0.95
     update_epochs: int = 4
@@ -60,6 +60,8 @@ class SimpleArgs:
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     log_dir: str = "mappo_logs"  # Custom log directory
     verbose_logging: bool = False  # Show detailed info every iteration
+    track_individual_agents: bool = True  # Track individual agent metrics in TensorBoard
+    max_agents_to_track: int = 10  # Maximum number of agents to track individually
 
 
 class SimpleAgent(nn.Module):
@@ -148,6 +150,9 @@ def collect_rollout(env, agent, obs_processor, args, device):
     # Reset environment
     obs_dict, _ = env.reset()  # env.reset() returns (observations, infos)
     
+    completed_rounds = 0
+    steps_in_current_round = 0
+    
     for step in range(args.num_steps):
         # Process observations for all agents
         processed_obs = {}
@@ -174,6 +179,16 @@ def collect_rollout(env, agent, obs_processor, args, device):
         # Step environment
         obs_dict, rewards_dict, terminations, truncations, infos = env.step(actions_dict)
         
+        # Track round completion (AEC environments cycle through all agents)
+        steps_in_current_round += 1
+        if step > 0 and len(env.agents) > 0 and steps_in_current_round >= len(env.agents):
+            completed_rounds += 1
+            steps_in_current_round = 0
+            
+            # Log progress every few completed rounds
+            if completed_rounds % 5 == 0:
+                print(f"  📍 Completed {completed_rounds} rounds in rollout (step {step+1}/{args.num_steps})")
+        
         # Store step data
         observations.append(processed_obs)
         actions.append(actions_dict)
@@ -186,6 +201,7 @@ def collect_rollout(env, agent, obs_processor, args, device):
             print(f"Episode ended at step {step + 1}: {len(env.agents)} agents remaining")
             break
     
+    print(f"🔄 Rollout completed: {len(observations)} steps collected")
     return observations, actions, log_probs, rewards, values
 
 
@@ -215,90 +231,156 @@ def compute_advantages(rewards, values, args):
     return np.array(advantages), np.array(returns)
 
 
-def _log_detailed_metrics(env, writer, global_step):
+def _log_detailed_metrics(env, writer, global_step, args=None):
     """Log detailed homeostatic environment metrics to TensorBoard."""
     try:
-        if not hasattr(env, 'unwrapped') or not hasattr(env.unwrapped, 'homeostatic_agents'):
+        print("    📊 Accessing base environment...")
+        
+        # SAFE environment unwrapping with loop limit
+        base_env = env
+        max_unwrap_depth = 10  # Prevent infinite loops
+        unwrap_count = 0
+        
+        print(f"    📊 Starting unwrapping, env type: {type(base_env)}")
+        
+        while hasattr(base_env, 'unwrapped') and unwrap_count < max_unwrap_depth:
+            print(f"    📊 Unwrapping step {unwrap_count + 1}, current type: {type(base_env)}")
+            next_env = base_env.unwrapped
+            if next_env is base_env:  # Prevent circular references
+                print("    ⚠️ Circular reference detected, breaking unwrap loop")
+                break
+            base_env = next_env
+            unwrap_count += 1
+            
+        if unwrap_count >= max_unwrap_depth:
+            print(f"    ⚠️ Max unwrap depth ({max_unwrap_depth}) reached, stopping")
+            
+        print(f"    📊 Unwrapping completed, final type: {type(base_env)}")
+        
+        if hasattr(base_env, 'env'):
+            print("    📊 Found .env attribute, accessing...")
+            base_env = base_env.env
+            print(f"    📊 After .env access, type: {type(base_env)}")
+            
+        print("    📊 Checking for homeostatic_agents...")
+        if not hasattr(base_env, 'homeostatic_agents'):
+            print(f"    ⚠️ No homeostatic_agents found in {type(base_env)}, returning...")
+            print(f"    📊 Available attributes: {[attr for attr in dir(base_env) if not attr.startswith('_')][:10]}")
             return
             
-        agents = env.unwrapped.homeostatic_agents
-        resource_stock = getattr(env.unwrapped, 'resource_stock', None)
+        print("    📊 Getting agents and resource stock...")
+        agents = base_env.homeostatic_agents
+        resource_stock = getattr(base_env, 'resource_stock', None)
+        print(f"    📊 Found {len(agents) if agents else 0} agents, resource_stock: {resource_stock}")
+        
+        # Set tracking preferences from args
+        track_individual = getattr(args, 'track_individual_agents', True)
+        max_track = getattr(args, 'max_agents_to_track', 10)
         
         if agents and len(agents) > 0:
+            print("    📊 Starting agent data collection...")
             # Collect data from all living agents
             internal_states = []
             drives = []
             social_norms = []
             last_intakes = []
             
-            # Individual agent tracking
-            for agent_id, agent in agents.items():
-                # Individual metrics for each agent
+            # Collect data from all agents and optionally track individuals
+            agent_items = list(agents.items())
+            agents_to_track = agent_items[:max_track] if track_individual else []
+            print(f"    📊 Processing {len(agent_items)} agents, tracking {len(agents_to_track)} individually...")
+            
+            for agent_id, agent in agent_items:
+                # Collect aggregate data from all agents
                 if hasattr(agent, 'internal_states'):
                     internal_state = agent.internal_states[0]
                     internal_states.append(internal_state)
-                    writer.add_scalar(f"individual_agents/{agent_id}/internal_state", internal_state, global_step)
                     
                 if hasattr(agent, 'get_current_drive'):
                     drive = agent.get_current_drive()
                     drives.append(drive)
-                    writer.add_scalar(f"individual_agents/{agent_id}/drive", drive, global_step)
                     
                 if hasattr(agent, 'perceived_social_norm'):
                     social_norm = agent.perceived_social_norm[0] if len(agent.perceived_social_norm) > 0 else 0
                     social_norms.append(social_norm)
-                    writer.add_scalar(f"individual_agents/{agent_id}/social_norm", social_norm, global_step)
                     
                 if hasattr(agent, 'last_intake'):
                     intake = agent.last_intake[0] if len(agent.last_intake) > 0 else 0
                     last_intakes.append(intake)
-                    writer.add_scalar(f"individual_agents/{agent_id}/intake", intake, global_step)
-                    
-                # Agent position
-                if hasattr(agent, 'position'):
-                    writer.add_scalar(f"individual_agents/{agent_id}/position", agent.position, global_step)
-                    
-                # Derived metrics for individual agents
-                if hasattr(agent, 'internal_states') and hasattr(agent, 'get_current_drive'):
-                    # Homeostatic balance: how close to optimal state (0)
-                    balance = 1.0 - abs(internal_state)  # 1 = perfect balance, 0 = very unbalanced
-                    writer.add_scalar(f"individual_agents/{agent_id}/homeostatic_balance", balance, global_step)
-                    
-                    # Urgency: combination of drive and internal state deviation
-                    urgency = drive * abs(internal_state)
-                    writer.add_scalar(f"individual_agents/{agent_id}/urgency", urgency, global_step)
+                
+                # Individual agent tracking (limited number)
+                if track_individual and (agent_id, agent) in agents_to_track:
+                    # Individual metrics for selected agents
+                    if hasattr(agent, 'internal_states'):
+                        writer.add_scalar(f"individual_agents/{agent_id}/internal_state", internal_state, global_step)
+                        
+                    if hasattr(agent, 'get_current_drive'):
+                        writer.add_scalar(f"individual_agents/{agent_id}/drive", drive, global_step)
+                        
+                    if hasattr(agent, 'perceived_social_norm'):
+                        writer.add_scalar(f"individual_agents/{agent_id}/social_norm", social_norm, global_step)
+                        
+                    if hasattr(agent, 'last_intake'):
+                        writer.add_scalar(f"individual_agents/{agent_id}/intake", intake, global_step)
+                        
+                    # Agent position
+                    if hasattr(agent, 'position'):
+                        writer.add_scalar(f"individual_agents/{agent_id}/position", agent.position, global_step)
+                        
+                    # Derived metrics for individual agents
+                    if hasattr(agent, 'internal_states') and hasattr(agent, 'get_current_drive'):
+                        # Homeostatic balance: how close to optimal state (0)
+                        balance = 1.0 - abs(internal_state)  # 1 = perfect balance, 0 = very unbalanced
+                        writer.add_scalar(f"individual_agents/{agent_id}/homeostatic_balance", balance, global_step)
+                        
+                        # Urgency: combination of drive and internal state deviation
+                        urgency = drive * abs(internal_state)
+                        writer.add_scalar(f"individual_agents/{agent_id}/urgency", urgency, global_step)
             
+            print("    📊 Starting TensorBoard logging...")
             # Log agent statistics and distributions
             if internal_states:
+                print("    📊 Logging internal states...")
                 writer.add_scalar("agents/avg_internal_state", np.mean(internal_states), global_step)
                 writer.add_scalar("agents/std_internal_state", np.std(internal_states), global_step)
                 writer.add_scalar("agents/min_internal_state", np.min(internal_states), global_step)
                 writer.add_scalar("agents/max_internal_state", np.max(internal_states), global_step)
+                print("    📊 Logging internal states histogram...")
                 # Add histogram to see distribution
                 writer.add_histogram("distributions/internal_states", np.array(internal_states), global_step)
+                print("    ✅ Internal states logged")
                 
             if drives:
+                print("    📊 Logging drives...")
                 writer.add_scalar("agents/avg_drive", np.mean(drives), global_step)
                 writer.add_scalar("agents/std_drive", np.std(drives), global_step)
                 writer.add_scalar("agents/max_drive", np.max(drives), global_step)
                 # Add histogram to see distribution
                 writer.add_histogram("distributions/drives", np.array(drives), global_step)
+                print("    ✅ Drives logged")
                 
             if social_norms:
+                print("    📊 Logging social norms...")
                 writer.add_scalar("agents/avg_social_norm", np.mean(social_norms), global_step)
                 writer.add_scalar("agents/std_social_norm", np.std(social_norms), global_step)
                 # Add histogram to see distribution
                 writer.add_histogram("distributions/social_norms", np.array(social_norms), global_step)
+                print("    ✅ Social norms logged")
                 
             if last_intakes:
+                print("    📊 Logging consumption...")
                 writer.add_scalar("agents/avg_consumption", np.mean(last_intakes), global_step)
                 writer.add_scalar("agents/total_consumption", np.sum(last_intakes), global_step)
                 # Add histogram to see distribution
                 writer.add_histogram("distributions/consumptions", np.array(last_intakes), global_step)
+                print("    ✅ Consumption logged")
                 
-                         # Log population metrics
+            print("    📊 Logging population metrics...")        
+            # Log population metrics
             writer.add_scalar("population/alive_agents", len(agents), global_step)
+            print("    ✅ Population metrics logged")
             
+            print("    📊 Logging cooperation metrics...")
             # Log cooperation metrics
             if last_intakes and internal_states:
                 # Cooperation index: low consumption when internal state is not critical
@@ -315,7 +397,9 @@ def _log_detailed_metrics(env, writer, global_step):
                     population_ratio = len(agents) / 10  # Assuming initial 10 agents
                     sustainability = (resource_ratio + population_ratio) / 2
                     writer.add_scalar("cooperation/sustainability_index", sustainability, global_step)
+            print("    ✅ Cooperation metrics logged")
             
+        print("    📊 Logging resource information...")
         # Log resource information
         if resource_stock is not None:
             writer.add_scalar("resources/stock_food", resource_stock[0], global_step)
@@ -327,6 +411,7 @@ def _log_detailed_metrics(env, writer, global_step):
                 depletion_rate = env.unwrapped._last_resource_stock - resource_stock[0]
                 writer.add_scalar("resources/depletion_rate", depletion_rate, global_step)
             env.unwrapped._last_resource_stock = resource_stock[0]
+        print("    ✅ Resource information logged")
             
     except Exception as e:
         # Don't let logging errors break training
@@ -352,16 +437,44 @@ def _print_detailed_info(env, iteration, avg_reward):
         if agents and len(agents) > 0:
             print(f"👥 Agents alive: {len(agents)}")
             
-            # Sample 3 agents for detailed view
-            agent_sample = list(agents.items())[:3]
+            # Show all agents if 5 or fewer, otherwise sample
+            if len(agents) <= 5:
+                agent_sample = list(agents.items())
+                print(f"📊 All agents:")
+            else:
+                agent_sample = list(agents.items())[:3]
+                print(f"📊 Sample of agents (first 3):")
             
             for agent_id, agent in agent_sample:
                 internal_state = agent.internal_states[0] if hasattr(agent, 'internal_states') else "N/A"
                 drive = agent.get_current_drive() if hasattr(agent, 'get_current_drive') else "N/A"
                 social_norm = agent.perceived_social_norm[0] if hasattr(agent, 'perceived_social_norm') and len(agent.perceived_social_norm) > 0 else "N/A"
                 last_intake = agent.last_intake[0] if hasattr(agent, 'last_intake') and len(agent.last_intake) > 0 else "N/A"
+                position = getattr(agent, 'position', "N/A")
                 
-                print(f"  {agent_id}: state={internal_state:.3f}, drive={drive:.3f}, norm={social_norm:.3f}, intake={last_intake:.3f}")
+                # Calculate derived metrics
+                if internal_state != "N/A":
+                    balance = 1.0 - abs(internal_state)
+                    urgency = drive * abs(internal_state) if drive != "N/A" else "N/A"
+                    status = "🟢" if balance > 0.7 else "🟡" if balance > 0.4 else "🔴"
+                else:
+                    balance = "N/A"
+                    urgency = "N/A"
+                    status = "❓"
+                
+                print(f"  {status} {agent_id}: state={internal_state:.3f}, drive={drive:.3f}, norm={social_norm:.3f}")
+                print(f"      intake={last_intake:.3f}, pos={position}, balance={balance:.3f}, urgency={urgency:.3f}")
+            
+            # Show summary statistics
+            if len(agents) > 5:
+                all_states = [agent.internal_states[0] for agent in agents.values() if hasattr(agent, 'internal_states')]
+                all_drives = [agent.get_current_drive() for agent in agents.values() if hasattr(agent, 'get_current_drive')]
+                
+                if all_states:
+                    print(f"📈 Population stats:")
+                    print(f"   Internal states: avg={np.mean(all_states):.3f}, std={np.std(all_states):.3f}, range=[{np.min(all_states):.3f}, {np.max(all_states):.3f}]")
+                if all_drives:
+                    print(f"   Drives: avg={np.mean(all_drives):.3f}, std={np.std(all_drives):.3f}, max={np.max(all_drives):.3f}")
         
         print(f"💰 Avg Reward: {avg_reward:.3f}")
         
@@ -435,7 +548,11 @@ def train_mappo_simple(args):
     print(f"📊 Para ver TensorBoard: tensorboard --logdir {args.log_dir}")
     print(f"\n📈 Métricas disponíveis no TensorBoard:")
     print(f"   • train/* - Métricas de treinamento (loss, entropy, reward)")
-    print(f"   • agents/* - Estados internos, drives, normas sociais, consumo")
+    print(f"   • agents/* - Estados internos, drives, normas sociais, consumo (médias)")
+    print(f"   • individual_agents/agent_X/* - Métricas individuais por agente:")
+    print(f"     - internal_state, drive, social_norm, intake, position")
+    print(f"     - homeostatic_balance, urgency")
+    print(f"   • distributions/* - Histogramas das distribuições de estados")
     print(f"   • resources/* - Stock de recursos, percentual, taxa de depleção")
     print(f"   • population/* - Número de agentes vivos")
     print(f"   • cooperation/* - Índices de cooperação e sustentabilidade")
@@ -448,12 +565,15 @@ def train_mappo_simple(args):
     print(f"Expected data per iteration: ~{args.num_steps * args.n_agents} points")
     
     for iteration in range(num_iterations):
+        iteration_start_time = time.time()
         print(f"\n--- Iteration {iteration + 1}/{num_iterations} ---")
         
         # Collect rollout
+        print("🎮 Starting rollout collection...")
         observations, actions, log_probs, rewards, values = collect_rollout(
             env, agent, obs_processor, args, device
         )
+        print("✅ Rollout collection completed")
         
         if not observations:
             print("Warning: No observations collected, resetting environment")
@@ -464,6 +584,8 @@ def train_mappo_simple(args):
         if not observations:
             print("Warning: No observations collected")
             continue
+        
+        print("📊 Starting data preparation...")
         
         # Prepare training data - ensure all lists have same length
         all_obs = []
@@ -497,9 +619,20 @@ def train_mappo_simple(args):
                     homeostatic_rewards.append(total_reward)  # Estimated homeostatic component
                     social_costs.append(abs(total_reward))    # Estimated social cost component
         
+        print(f"📊 Data collected: {len(all_obs)} data points")
+        
         if len(all_obs) == 0:
             print("Warning: No training data available")
             continue
+            
+        # Check for minimum data requirement
+        min_data_points = 32  # Minimum for stable training
+        if len(all_obs) < min_data_points:
+            print(f"⚠️ Insufficient data for training: {len(all_obs)} < {min_data_points} points")
+            print(f"   Episode ended too early (resources depleted). Skipping training...")
+            continue
+            
+        print("🔄 Computing advantages...")
         
         # Compute advantages and returns for the exact same data
         advantages = []
@@ -519,6 +652,8 @@ def train_mappo_simple(args):
             print("Skipping this iteration...")
             continue
         
+        print("🔄 Converting to tensors...")
+        
         # Convert to tensors
         obs_tensor = torch.FloatTensor(np.array(all_obs)).to(device)
         actions_tensor = torch.LongTensor(all_actions).to(device)
@@ -526,18 +661,57 @@ def train_mappo_simple(args):
         advantages_tensor = torch.FloatTensor(advantages).to(device)
         returns_tensor = torch.FloatTensor(returns).to(device)
         
+        print("🔄 Starting policy updates...")
+        
         # Normalize advantages
         if advantages_tensor.std() > 1e-8:
             advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (advantages_tensor.std() + 1e-8)
         else:
             print("⚠️  Warning: Zero advantage variance, skipping normalization")
         
-        # Update policy
+        # Check tensor health before policy updates
+        print("🔍 Checking tensor health...")
+        print(f"   obs_tensor: shape={obs_tensor.shape}, has_nan={torch.isnan(obs_tensor).any()}")
+        print(f"   advantages: shape={advantages_tensor.shape}, has_nan={torch.isnan(advantages_tensor).any()}")
+        print(f"   old_log_probs: shape={old_log_probs.shape}, has_nan={torch.isnan(old_log_probs).any()}")
+        
+        if torch.isnan(obs_tensor).any() or torch.isnan(advantages_tensor).any() or torch.isnan(old_log_probs).any():
+            print("❌ NaN detected in input tensors! Skipping policy updates...")
+            continue
+        
+        # Update policy with timeout protection
+        print(f"🔄 Starting {args.update_epochs} policy update epochs...")
+        update_start_time = time.time()
+        
         for epoch in range(args.update_epochs):
+            epoch_start_time = time.time()
+            print(f"  🔄 Policy update epoch {epoch + 1}/{args.update_epochs}")
+            
+            # Timeout check (30 seconds per epoch max)
+            if time.time() - update_start_time > 30:
+                print("⚠️ Policy update timeout! Skipping remaining epochs...")
+                break
+            
             # Get current policy outputs
-            _, new_log_probs, entropy, values_pred = agent.get_action_and_value(obs_tensor, actions_tensor)
+            print("    🧠 Getting action values...")
+            try:
+                _, new_log_probs, entropy, values_pred = agent.get_action_and_value(obs_tensor, actions_tensor)
+                
+                # Check for numerical issues
+                if torch.isnan(new_log_probs).any():
+                    print("⚠️ NaN detected in log_probs!")
+                    break
+                if torch.isinf(new_log_probs).any():
+                    print("⚠️ Inf detected in log_probs!")
+                    break
+                    
+                print("    ✅ Action values obtained")
+            except Exception as e:
+                print(f"❌ Error getting action values: {e}")
+                break
             
             # Policy loss
+            print("    📊 Computing losses...")
             ratio = torch.exp(new_log_probs - old_log_probs)
             surr1 = ratio * advantages_tensor
             surr2 = torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef) * advantages_tensor
@@ -551,19 +725,44 @@ def train_mappo_simple(args):
             
             # Total loss
             loss = policy_loss + args.vf_coef * value_loss - args.ent_coef * entropy_loss
+            print("    ✅ Losses computed")
             
             # Update
-            optimizer.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
-            optimizer.step()
+            print("    🔄 Backward pass...")
+            try:
+                optimizer.zero_grad()
+                loss.backward()
+                print("    ✅ Backward completed")
+                
+                print("    🔄 Optimizer step...")
+                grad_norm = nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
+                
+                # Check gradient norm
+                if torch.isnan(grad_norm) or torch.isinf(grad_norm):
+                    print(f"⚠️ Problematic gradient norm: {grad_norm}")
+                    break
+                    
+                optimizer.step()
+                print("    ✅ Optimizer step completed")
+                
+                epoch_time = time.time() - epoch_start_time
+                print(f"    ⏱️ Epoch {epoch + 1} completed in {epoch_time:.3f}s")
+                
+            except Exception as e:
+                print(f"❌ Error during optimization: {e}")
+                break
+        
+        total_update_time = time.time() - update_start_time
+        print(f"✅ All policy updates completed in {total_update_time:.3f}s")
         
         # Log metrics
+        print("📊 Computing final metrics...")
         total_reward = sum(all_rewards) if all_rewards else 0
         avg_reward = total_reward / len(all_rewards) if all_rewards else 0
         
         global_step += len(all_obs)
         
+        print("📊 Logging basic training metrics...")
         # Basic training metrics
         writer.add_scalar("train/policy_loss", policy_loss.item(), global_step)
         writer.add_scalar("train/value_loss", value_loss.item(), global_step)
@@ -571,7 +770,9 @@ def train_mappo_simple(args):
         writer.add_scalar("train/total_loss", loss.item(), global_step)
         writer.add_scalar("train/avg_reward", avg_reward, global_step)
         writer.add_scalar("train/data_points", len(all_obs), global_step)
+        print("✅ Basic metrics logged")
         
+        print("📊 Logging reward breakdown...")
         # Reward breakdown metrics
         if homeostatic_rewards:
             writer.add_scalar("rewards/avg_homeostatic", np.mean(homeostatic_rewards), global_step)
@@ -579,10 +780,42 @@ def train_mappo_simple(args):
         if social_costs:
             writer.add_scalar("rewards/avg_social_cost", np.mean(social_costs), global_step)
             writer.add_scalar("rewards/std_social_cost", np.std(social_costs), global_step)
+        print("✅ Reward breakdown logged")
         
-        # Detailed environment metrics
-        _log_detailed_metrics(env, writer, global_step)
+        print("📊 Logging detailed environment metrics...")
+        # Detailed environment metrics with timeout
+        metrics_start_time = time.time()
+        try:
+            # Set a 10-second timeout for metrics logging
+            import signal
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError("Metrics logging timeout")
+            
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(10)  # 10-second timeout
+            
+            _log_detailed_metrics(env, writer, global_step, args)
+            
+            signal.alarm(0)  # Cancel the alarm
+            metrics_time = time.time() - metrics_start_time
+            print(f"✅ Detailed metrics logged in {metrics_time:.3f}s")
+            
+        except TimeoutError:
+            print("⚠️ Metrics logging timed out after 10 seconds, using simple logging...")
+            # Simple fallback logging
+            try:
+                writer.add_scalar("population/alive_agents", len(env.possible_agents), global_step)
+                print("✅ Simple metrics logged as fallback")
+            except:
+                print("⚠️ Even simple metrics failed, skipping...")
+                
+        except Exception as e:
+            print(f"⚠️ Warning: Could not log detailed metrics: {e}")
+            print(f"⚠️ Error type: {type(e).__name__}")
+            # Continue training even if logging fails
         
+        print("✅ Policy update completed")
         print(f"Policy Loss: {policy_loss.item():.4f}")
         print(f"Value Loss: {value_loss.item():.4f}")
         print(f"Entropy: {entropy_loss.item():.4f}")
@@ -608,6 +841,9 @@ def train_mappo_simple(args):
                 'args': args
             }, f"models/simple_mappo_iter_{iteration + 1}.pt")
             print(f"Model saved at iteration {iteration + 1}")
+        
+        iteration_time = time.time() - iteration_start_time
+        print(f"✅ Iteration {iteration + 1} completed successfully in {iteration_time:.2f}s\n")
     
     # Save final model
     os.makedirs("models", exist_ok=True)
@@ -632,12 +868,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", type=str, default="config/config.yaml")
     parser.add_argument("--n_agents", type=int, default=10)
-    parser.add_argument("--initial_resource_stock", type=float, default=1000.0)
+    parser.add_argument("--initial_resource_stock", type=float, default=1.0)
     parser.add_argument("--total_timesteps", type=int, default=100_000)
     parser.add_argument("--learning_rate", type=float, default=3e-4)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--log_dir", type=str, default="mappo_logs", help="Directory to save logs")
     parser.add_argument("--verbose", action="store_true", help="Show detailed info every iteration")
+    parser.add_argument("--no-individual-tracking", action="store_true", help="Disable individual agent tracking in TensorBoard")
+    parser.add_argument("--max-agents-tracked", type=int, default=10, help="Maximum number of agents to track individually")
     
     args = parser.parse_args()
     
@@ -650,7 +888,9 @@ def main():
         learning_rate=args.learning_rate,
         seed=args.seed,
         log_dir=args.log_dir,
-        verbose_logging=args.verbose
+        verbose_logging=args.verbose,
+        track_individual_agents=not args.no_individual_tracking,
+        max_agents_to_track=args.max_agents_tracked
     )
     
     train_mappo_simple(train_args)
@@ -662,4 +902,6 @@ if __name__ == "__main__":
     # python -m src.scripts.pettingzoo_env.train_mappo_simple --log_dir "experimento_1" --seed 42
     # python -m src.scripts.pettingzoo_env.train_mappo_simple --log_dir "teste_cooperacao" --n_agents 8 --verbose
     # python -m src.scripts.pettingzoo_env.train_mappo_simple --log_dir "debug" --verbose --total_timesteps 5000
+    # python -m src.scripts.pettingzoo_env.train_mappo_simple --log_dir "individual_analysis" --max-agents-tracked 5
+    # python -m src.scripts.pettingzoo_env.train_mappo_simple --log_dir "aggregate_only" --no-individual-tracking
     main() 

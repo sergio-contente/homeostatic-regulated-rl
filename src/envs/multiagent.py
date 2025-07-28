@@ -505,17 +505,22 @@ class NormalHomeostaticEnv(AECEnv):
         """Check if any agents should terminate due to critical states."""
         agents_to_remove = []
         
-        for agent_id in self.agents[:]:  # Copy list to avoid modification during iteration
-            agent = self.homeostatic_agents[agent_id]
-            
-            if agent.is_in_critical_state(threshold=1.0):
-                self.terminations[agent_id] = True
+        # 🔧 FIXED: Check global resource depletion FIRST (separate from individual agent checks)
+        if np.all(self.resource_stock <= 0.001):
+            logger.warning(f"🏜️ Global termination: All resources depleted (stock: {self.resource_stock})")
+            # Mark ALL agents for truncation (episode ends)
+            for agent_id in self.agents[:]:
+                self.truncations[agent_id] = True
                 agents_to_remove.append(agent_id)
-                logger.warning(f"💀 {agent_id} terminated: critical homeostatic state")
-            elif np.all(self.resource_stock <= 0):
-                self.terminations[agent_id] = True
-                agents_to_remove.append(agent_id)
-                logger.warning(f"💀 {agent_id} terminated: resource depletion")
+        else:
+            # Individual agent termination checks (only if resources are available)
+            for agent_id in self.agents[:]:
+                agent = self.homeostatic_agents[agent_id]
+                
+                if agent.is_in_critical_state(threshold=1.0):
+                    self.terminations[agent_id] = True
+                    agents_to_remove.append(agent_id)
+                    logger.warning(f"💀 {agent_id} terminated: critical homeostatic state")
         
         # Remove terminated agents
         for agent_id in agents_to_remove:
