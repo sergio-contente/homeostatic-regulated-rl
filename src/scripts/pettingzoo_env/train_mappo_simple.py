@@ -28,6 +28,12 @@ from dataclasses import dataclass
 from src.envs.multiagent import create_env
 from pettingzoo.utils.conversions import aec_to_parallel
 
+#0.8
+#0.6
+#0.5
+#0.3
+#0.7
+#0.75
 
 @dataclass
 class SimpleArgs:
@@ -35,18 +41,18 @@ class SimpleArgs:
     config_path: str = "config/config.yaml"
     drive_type: str = "base_drive"
     learning_rate_social: float = 0.1
-    beta: float = 0.5
+    beta: float = 0.75
     number_resources: int = 1
     n_agents: int = 10
     env_size: int = 1
     max_steps: int = 1000
-    initial_resource_stock: float = 1000.0
+    initial_resource_stock: float = 1.0
     
     # Training
     total_timesteps: int = 100_000  # Reduced for faster testing
     learning_rate: float = 3e-4
     num_envs: int = 1  # Start with 1 environment
-    num_steps: int = 200  # Complete rounds: 20 rounds * 10 agents = 200 steps
+    num_steps: int = 20 * n_agents  # Complete rounds: 20 rounds * 10 agents = 200 steps
     gamma: float = 0.99
     gae_lambda: float = 0.95
     update_epochs: int = 4
