@@ -28,12 +28,44 @@ from dataclasses import dataclass
 from src.envs.multiagent import create_env
 from pettingzoo.utils.conversions import aec_to_parallel
 
-#0.8
-#0.6
-#0.5
-#0.3
-#0.7
-#0.75
+#3_agents stock 1
+    #0.8
+    #0.7
+    #0.6
+    #0.5
+    #0.4
+    #0.3
+    #0.2
+    #0.1
+
+#10_agents stock 1
+    #0.8
+    #0.7
+    #0.6
+    #0.5
+    #0.4
+    #0.3
+    #0.2
+    #0.1
+# #10_agents stock 2.5
+    #0.8
+    #0.7
+    #0.6
+    #0.5
+    #0.4
+    #0.3
+    #0.2
+    #0.1
+
+#10_agents stock 5
+    #0.8
+    #0.7
+    #0.6
+    #0.5
+    #0.4
+    #0.3
+    #0.2
+    #0.1
 
 @dataclass
 class SimpleArgs:
@@ -41,7 +73,7 @@ class SimpleArgs:
     config_path: str = "config/config.yaml"
     drive_type: str = "base_drive"
     learning_rate_social: float = 0.1
-    beta: float = 0.75
+    beta: float = 0.1
     number_resources: int = 1
     n_agents: int = 10
     env_size: int = 1
@@ -874,7 +906,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", type=str, default="config/config.yaml")
     parser.add_argument("--n_agents", type=int, default=10)
-    parser.add_argument("--initial_resource_stock", type=float, default=1.0)
+    parser.add_argument("--initial_resource_stock", type=float, default=5.0)
     parser.add_argument("--total_timesteps", type=int, default=100_000)
     parser.add_argument("--learning_rate", type=float, default=3e-4)
     parser.add_argument("--seed", type=int, default=1)
