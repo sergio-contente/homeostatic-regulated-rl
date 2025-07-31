@@ -95,7 +95,7 @@ class NormalHomeostaticEnv(AECEnv):
         self.learning_rate = learning_rate
         self.beta = beta
         
-        # 🔧 FIXED: Proper seed handling for reproducibility
+        # Seed handling for reproducibility
         self._seed = seed
         self.np_random, self.np_random_seed = seeding.np_random(seed)
         
@@ -103,7 +103,6 @@ class NormalHomeostaticEnv(AECEnv):
         self.global_resource_manager = GlobalResourceManager(config_path, drive_type)
         
         # Resource stock (NORMARL-style shared resource pool)
-        # 🔧 FIXED: Use configurable initial resource stock instead of hardcoded 3.0
         resource_amount = initial_resource_stock if initial_resource_stock is not None else 3.0
         self.initial_resource_stock = np.ones(number_resources) * resource_amount
         self.resource_stock = self.initial_resource_stock.copy()
@@ -122,10 +121,10 @@ class NormalHomeostaticEnv(AECEnv):
         self.num_moves = 0
         self.round_intakes = []  # Track intakes for social norm updates
         
-        # 🔧 Initialize agent system (will be reset in reset())
+        # Initialize agent system (will be reset in reset())
         self._create_agent_system()
         
-        # 🔧 FIXED: Explicit AgentSelector initialization
+        # Explicit AgentSelector initialization
         self._agent_selector = AgentSelector(self.agents)
         self.agent_selection = self._agent_selector.next()
         
@@ -162,7 +161,7 @@ class NormalHomeostaticEnv(AECEnv):
         """Create or recreate the agent system for clean state."""
         logger.debug("🏗️ Creating agent system")
         
-        # 🔧 FIXED: Clean recreation of agents to prevent state leakage
+        #Clean recreation of agents to prevent state leakage
         self.homeostatic_agents = {}
         self.action_functions = {}
         self.observation_functions = {}
@@ -201,7 +200,7 @@ class NormalHomeostaticEnv(AECEnv):
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None):
         """
-        🔧 FIXED: Reset following PettingZoo AECEnv standard.
+        Reset following PettingZoo AECEnv standard.
         
         Returns None for AECEnv compatibility with wrappers.
         """
@@ -214,7 +213,7 @@ class NormalHomeostaticEnv(AECEnv):
         # Reset agents list to original
         self.agents = self.possible_agents[:]
         
-        # 🔧 FIXED: Clean recreation of agent system
+        # Clean recreation of agent system
         self._create_agent_system()
         
         # Initialize PettingZoo required attributes
@@ -229,7 +228,7 @@ class NormalHomeostaticEnv(AECEnv):
         self.resource_stock = self.initial_resource_stock.copy()
         self.round_intakes = []
         
-        # 🔧 FIXED: Explicit AgentSelector reset
+        # Explicit AgentSelector reset
         self._agent_selector = AgentSelector(self.agents)
         self.agent_selection = self._agent_selector.next()
         
@@ -268,7 +267,7 @@ class NormalHomeostaticEnv(AECEnv):
         # Store intake for social norm updates
         self.round_intakes.append(last_intake.copy())
 
-        # 🔧 FIXED: Calculate rewards using correct reference point
+        # Calculate rewards using correct reference point
         reward = self._calculate_reward(current_agent, states_before_decay, last_intake)
         self.rewards[current_agent_id] = reward
 
@@ -340,21 +339,21 @@ class NormalHomeostaticEnv(AECEnv):
                 available_amount = min(amount, self.resource_stock[i])
                 if available_amount > 0:
                     actual_consumption[i] = available_amount
-                    # 🔧 CRITICAL: Do NOT subtract from resource_stock here!
+                    # Do NOT subtract from resource_stock here!
                     # Will be subtracted in _check_resource_regeneration()
     
         return actual_consumption
 
     def _calculate_reward(self, agent: HomeostaticAgent, states_before_decay: np.ndarray, last_intake: np.ndarray) -> float:
         """
-        🔧 FIXED: Calculate combined homeostatic and social reward.
+        Calculate combined homeostatic and social reward.
         
         Args:
             agent: The agent whose reward we're calculating
             states_before_decay: Internal states BEFORE any modifications (decay or intake)
             last_intake: Actual intake that occurred
         """
-        # 🔧 FIXED: Homeostatic reward compares initial states vs final states
+        # Homeostatic reward compares initial states vs final states
         # This captures both decay effects AND intake effects
         old_drive = agent.drive.compute_drive(states_before_decay)
         new_drive = agent.drive.compute_drive(agent.internal_states)  # Final states (after decay +/- intake)
@@ -378,11 +377,7 @@ class NormalHomeostaticEnv(AECEnv):
         """Complete a round after all agents have acted."""
         logger.debug("🌍 Completing round")
         
-        # Update global environment
-        self._update_global_environment()
-        
-        # 🔧 FIXED: Apply resource regeneration BEFORE resetting round_intakes
-        # Apply resource regeneration (uses round_intakes data)
+        # Apply resource regeneration BEFORE resetting round_intakes
         self._check_resource_regeneration()
         
         # Update social norms with round data
@@ -416,7 +411,7 @@ class NormalHomeostaticEnv(AECEnv):
 
     def _advance_agent_selection(self):
         """Advance to the next agent in the selection order."""
-        # 🔧 FIXED: Robust agent selection management
+        # Robust agent selection management
         if self._agent_selector is not None and self.agents:
             self.agent_selection = self._agent_selector.next()
         else:
@@ -428,26 +423,10 @@ class NormalHomeostaticEnv(AECEnv):
         """Compute resource scarcity factors for social cost calculation."""
         a = 2.0  # Base social cost
         b = 0.8  # Resource scarcity multiplier
-        scarcity = np.maximum(0, a - b * self.resource_stock)
+        #1000 initial resource, a = 10 and b = 0.01
+        # like a relu function
+        scarcity = np.maximum(0, a - b * self.resource_stock) # add the inverse exponencial function here
         return scarcity
-
-    def _update_global_environment(self):
-        """Update global environment state after all agents have acted."""
-        stock_before = self.resource_stock.copy()
-        
-        # 🔧 FIXED: Removed double regeneration - this is now handled in _check_resource_regeneration()
-        # Apply NORMARL regeneration
-        # regeneration_rate = self.resource_regeneration_rate[0]
-        # self.resource_stock = (1 + regeneration_rate) * stock_before
-        
-        # 🔧 FIXED: No regeneration here - only in _check_resource_regeneration()
-        # Resources will be updated properly with economic formula: Et+1 = (1 + δ)Et - Σ Qi_t
-        
-        # Clamp to bounds (moved to _check_resource_regeneration)
-        # self.resource_stock = np.maximum(0, self.resource_stock)
-        # self.resource_stock = np.minimum(self.resource_stock, self.initial_resource_stock)
-        
-        logger.debug(f"🌱 Global environment updated (regeneration handled separately): {stock_before}")
 
     def _update_social_norms_with_round_data(self):
         """Update social norms using data from the current round."""
@@ -484,7 +463,7 @@ class NormalHomeostaticEnv(AECEnv):
         new_stock = (1 + regeneration_rates) * self.resource_stock - total_consumption
         
         # Apply constraints (non-negative and natural carrying capacity)
-        # 🔧 FIXED: Use initial stock as natural ecological carrying capacity
+        # Use initial stock as natural ecological carrying capacity
         # Resources can regenerate but cannot exceed the natural sustainable level
         self.resource_stock = np.minimum(
             np.maximum(0, new_stock), 
@@ -505,7 +484,7 @@ class NormalHomeostaticEnv(AECEnv):
         """Check if any agents should terminate due to critical states."""
         agents_to_remove = []
         
-        # 🔧 FIXED: Check global resource depletion FIRST (separate from individual agent checks)
+        # Check global resource depletion FIRST (separate from individual agent checks)
         if np.all(self.resource_stock <= 0.001):
             logger.warning(f"🏜️ Global termination: All resources depleted (stock: {self.resource_stock})")
             # Mark ALL agents for truncation (episode ends)
@@ -528,7 +507,7 @@ class NormalHomeostaticEnv(AECEnv):
                 self.agents.remove(agent_id)
                 logger.info(f"🗑️ Removed {agent_id} from active agents")
         
-        # 🔧 FIXED: Robust agent selector update
+        # Robust agent selector update
         if agents_to_remove:
             if self.agents:
                 self._agent_selector = AgentSelector(self.agents)
@@ -630,26 +609,22 @@ if __name__ == "__main__":
         size=5,
         max_steps=100,
         log_level="INFO",
-        initial_resource_stock=1000.0  # 🔧 Example of custom resource stock
+        initial_resource_stock=1000.0
     )
     
     print(f"✅ Environment created: {type(env_test)}")
     print(f"   Metadata: {env_test.metadata}")
     
-    # 🔧 FIXED: Call reset() BEFORE accessing agents
     print("\n🔄 Resetting environment...")
     env_test.reset(seed=42)
     
-    # NOW we can access attributes after reset
     print(f"   Agents: {env_test.agents}")
     print(f"   Current agent: {env_test.agent_selection}")
     print(f"   Possible agents: {env_test.possible_agents}")
     
-    # Test action and observation spaces
     print(f"   Action space sample: {env_test.action_space(env_test.agent_selection)}")
     print(f"   Observation space sample: {type(env_test.observation_space(env_test.agent_selection))}")
     
-    # Test a few steps
     print("\n🚀 Running simulation...")
     for i in range(10):
         if not env_test.agents:
@@ -709,39 +684,3 @@ if __name__ == "__main__":
         print(f"❌ Parallel test failed: {e}")
     
     print("\n✅ All tests passed! Environment is production-ready! 🎉")
-    
-    # Usage examples
-    print("\n📚 Usage Examples:")
-    print("=" * 40)
-    print("""
-# AEC Environment (turn-based)
-from src.envs.multiagent import create_env
-
-env = create_env(
-    config_path="config/config.yaml",
-    drive_type="base_drive",
-    learning_rate=0.1,
-    beta=0.5,
-    number_resources=1,
-    n_agents=5,
-    log_level="INFO",
-    initial_resource_stock=1000.0  # Custom initial resources
-)
-
-env.reset()
-while env.agents:
-    current_agent = env.agent_selection
-    action = env.action_space(current_agent).sample()
-    env.step(action)
-
-# Parallel Environment (simultaneous)
-from src.envs.multiagent import create_parallel_env
-
-env = create_parallel_env(...)
-observations = env.reset()
-while env.agents:
-    actions = {agent: env.action_space(agent).sample() for agent in env.agents}
-    observations, rewards, terminations, truncations, infos = env.step(actions)
-    if all(terminations.values()) or all(truncations.values()):
-        break
-""")

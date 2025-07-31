@@ -67,6 +67,16 @@ from pettingzoo.utils.conversions import aec_to_parallel
     #0.2
     #0.1
 
+# Add some cost when the resource stock is 0 or agents die
+# cost dynamically updated = e-(excess)
+
+# people are starving => social cost becomes irrelevant ... and the otherwise is true
+# to do this change the scarcity of the environment and see what happens
+
+# second: try to change the discont factor dynamically for future rewards (selfigh or not)
+
+# do not change the amount of resources, instead change the amount of consomption/intake 
+
 @dataclass
 class SimpleArgs:
     # Environment
