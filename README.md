@@ -1,6 +1,6 @@
 # homeostatic-regulated-rl
 
-**Supplementary Table 1: Intake-after-food-restriction task**
+<!-- **Supplementary Table 1: Intake-after-food-restriction task**
 
 | Free parameter | Value | Explanation                                                  |
 |----------------|-------|--------------------------------------------------------------|
@@ -13,6 +13,6 @@
 | αₖ             | 0.3   | Learning rate of predicted value of increases in the internal state |
 | K              | 2     | Volume of small intake                                       |
 | H*             | 200   | The ideal internal state                                     |
-| H₀             | 100   | The depleted initial internal state                          |
+| H₀             | 100   | The depleted initial internal state                          | -->
 
 
