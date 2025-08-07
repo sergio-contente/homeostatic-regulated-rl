@@ -22,7 +22,7 @@ except ImportError:
 
 from pettingzoo.utils.conversions import parallel_wrapper_fn
 
-from .observations import DefaultObservationFunction, ObservationFunction
+from ..agents.observations import DefaultObservationFunction, ObservationFunction
 from .traffic_signal import TrafficSignal
 
 

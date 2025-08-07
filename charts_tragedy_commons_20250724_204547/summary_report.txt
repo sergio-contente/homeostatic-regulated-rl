@@ -1,0 +1,72 @@
+TRAGEDY OF COMMONS - ANALYSIS REPORT
+==================================================
+
+CONFIGURATION:
+- Original config parameters preserved
+- Intake per agent: 0.1
+- Regeneration rate: 0.02 (2%)
+- Analysis method: Population scaling
+
+SCENARIOS TESTED:
+------------------------------
+Scenario: BASELINE
+  Agents: 100
+  Initial Resources (E0): 2000
+  Final Depletion: 0.0%
+  Economic Balance: +30.0 resources/round
+  Outcome: Sustainable
+  E0/Consumption Ratio: 200.0x
+
+Scenario: THRESHOLD
+  Agents: 200
+  Initial Resources (E0): 1000
+  Final Depletion: 0.0%
+  Economic Balance: +0.0 resources/round
+  Outcome: Sustainable
+  E0/Consumption Ratio: 50.0x
+
+Scenario: MILD TRAGEDY
+  Agents: 300
+  Initial Resources (E0): 1000
+  Final Depletion: 7.4%
+  Economic Balance: -10.0 resources/round
+  Outcome: Mild Depletion
+  E0/Consumption Ratio: 33.3x
+
+Scenario: STRONG TRAGEDY
+  Agents: 400
+  Initial Resources (E0): 800
+  Final Depletion: 32.7%
+  Economic Balance: -24.0 resources/round
+  Outcome: Partial Depletion
+  E0/Consumption Ratio: 20.0x
+
+Scenario: EXTREME TRAGEDY
+  Agents: 500
+  Initial Resources (E0): 500
+  Final Depletion: 97.4%
+  Economic Balance: -40.0 resources/round
+  Outcome: Tragedy of Commons
+  E0/Consumption Ratio: 10.0x
+
+KEY FINDINGS:
+---------------
+- Total scenarios: 5
+- Tragedy scenarios: 1
+- Sustainable scenarios: 3
+- Critical threshold: ~300 agents
+- Maximum depletion: 97.4%
+
+ECONOMIC VALIDATION:
+--------------------
+- Formula: Et+1 = (1 + δ)Et - Σ Qi_t validated
+- Tragedy occurs when consumption > regeneration
+- Original parameters demonstrate clear dynamics
+- Population scaling successfully creates pressure
+
+IMPLICATIONS:
+------------
+- Social norms are economically necessary
+- Clear threshold where cooperation becomes critical
+- Model validates tragedy of commons theory
+- Demonstrates need for learning in multi-agent systems
