@@ -26,7 +26,7 @@ log_dir = os.path.join('runs', f'DQN_GridWorld_{drive_type}_{current_time}')
 writer = SummaryWriter(log_dir)
 
 # Criar o ambiente e acessar o ambiente base através do wrapper TimeLimit
-env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type)
+env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type, size=10)
 
 # Obter o ambiente base (GridWorldEnv) se estiver envolvido por wrappers
 def get_unwrapped_env(env):
@@ -263,7 +263,7 @@ def optimize_model():
     return loss.item()
 
 if torch.cuda.is_available() or torch.backends.mps.is_available():
-    num_episodes = 200
+    num_episodes = 1000
 else:
     num_episodes = 50
 

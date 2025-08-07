@@ -16,7 +16,7 @@ config_path = "config/config.yaml"
 drive_type = "elliptic_drive"
 
 # Create environment with human rendering
-env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type, render_mode="human")
+env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type, render_mode="human", size=5)
 
 # Get the base environment
 def get_unwrapped_env(env):
