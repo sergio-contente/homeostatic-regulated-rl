@@ -40,6 +40,8 @@ class BaseDrive():
             for state_name, state_config in optimal_internal_states_config.items()
         }
 
+        # ✅ NOTE: Resource regeneration moved to GlobalResourceManager
+        # Keep regeneration config for backwards compatibility but don't use in drive logic
         self._internal_states_resources_regen = {
             state_name: state_config['regeneration']
             for state_name, state_config in optimal_internal_states_config.items()
@@ -71,11 +73,6 @@ class BaseDrive():
         """
         return self._internal_states_intake_rates[state_name]
     
-    def get_state_resources_regen_rate(self, state_name):
-        """
-        Get the resource regeneration rate for a specific internal state.
-        """
-        return self._internal_states_resources_regen[state_name]
     
     def get_array_optimal_states_values(self):
         """
@@ -107,7 +104,17 @@ class BaseDrive():
     def get_array_resources_regeneration_rate(self):
         """
         Convert resource regeneration rates to a numpy array.
+        
+        ⚠️  DEPRECATED: Use GlobalResourceManager.get_resource_stock_regeneration_array() instead.
+        This method is kept for backwards compatibility only.
         """
+        import warnings
+        warnings.warn(
+            "get_array_resources_regeneration_rate() is deprecated. "
+            "Use GlobalResourceManager.get_resource_stock_regeneration_array() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         rates = []
         for state_name in self._internal_states_resources_regen:
             rates.append(self._internal_states_resources_regen[state_name])
@@ -154,11 +161,18 @@ class BaseDrive():
     def compute_reward(self, new_drive):
         """
         Compute the reward as the reduction in drive from applying the outcome.
+        """
+        reward = self._current_drive - new_drive
+        return reward
+
+    def compute_reward(self, old_drive, new_drive):
+        """
+        Compute the reward as the reduction in drive from applying the outcome.
 
         :param new_drive:  New drive (H_{t+1}).
         :return: Scalar numpy value representing reward.
         """
-        reward = self._current_drive - new_drive
+        reward = old_drive - new_drive
         return reward
     
     def has_reached_optimal(self, current_internal_states, threshold):
@@ -187,6 +201,22 @@ class BaseDrive():
         """
         return list(self._optimal_internal_states_config.keys())
     
+    def get_regeneration_rate(self):
+        """
+        Get the regeneration rate for all internal states.
+        
+        ⚠️  DEPRECATED: Use GlobalResourceManager.get_regeneration_rates() instead.
+        This method is kept for backwards compatibility only.
+        """
+        import warnings
+        warnings.warn(
+            "get_regeneration_rate() is deprecated. "
+            "Use GlobalResourceManager.get_regeneration_rates() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self._internal_states_resources_regen
+    
     def apply_natural_decay(self, current_internal_states):
         """
         Apply natural decay to internal states based on loss rates.
@@ -202,20 +232,70 @@ class BaseDrive():
         
         return updated_states
     
-    def apply_intake(self, current_internal_states, action_states):
+    def get_intake_array(self, intake_resources):
+        """
+        Get the intake array for  intake resources.
+        """
+        intake_rates = self.get_array_intake_rates()
+        intake_resources = self._to_array(intake_resources)
+
+        # Apply intake only to states specified by intake_resources
+        intake = intake_rates * intake_resources
+        return intake
+    
+    def apply_intake(self, current_internal_states, intake_resources):
         """
         Apply intake to internal states based on action and intake rates.
         
         :param current_internal_states: Current internal state values.
-        :param action_states: Boolean array indicating which states to apply intake to.
+        :param intake_resources: Boolean array indicating which states to apply intake to.
         :return: Updated internal state values after intake.
         """
         current_states = self._to_array(current_internal_states)
-        intake_rates = self.get_array_intake_rates()
-        action_states = self._to_array(action_states)
-        
-        # Apply intake only to states specified by action_states
-        intake = intake_rates * action_states
+        intake = self.get_intake_array(intake_resources=intake_resources)
         updated_states = current_states + intake
         
         return updated_states
+    
+    def get_state_resources_regen_rate(self, state_name):
+        """
+        Get the resource regeneration rate for a specific internal state.
+        
+        ⚠️  DEPRECATED: Use GlobalResourceManager.get_regeneration_rate() instead.
+        This method is kept for backwards compatibility only.
+        """
+        import warnings
+        warnings.warn(
+            "get_state_resources_regen_rate() is deprecated. "
+            "Use GlobalResourceManager.get_regeneration_rate() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self._internal_states_resources_regen[state_name]
+    
+    def apply_resource_regeneration(self, resource_available, resource_name):
+        """
+        Apply resource regeneration to a single resource.
+        
+        ⚠️  DEPRECATED: This method should NOT be called from individual agent drives!
+        Use GlobalResourceManager.apply_resource_regeneration() or 
+        apply_resource_regeneration_single() at the environment level instead.
+        
+        This creates inconsistent resource states in multi-agent environments.
+        """
+        import warnings
+        warnings.warn(
+            "apply_resource_regeneration() is deprecated and should not be used! "
+            "Use GlobalResourceManager.apply_resource_regeneration() at environment level. "
+            "Per-agent resource regeneration creates inconsistent shared resource states.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        if not resource_available:
+            random_number = np.random.uniform(0, 1)
+            if random_number < self.get_state_resources_regen_rate(resource_name):
+                return True
+            else:
+                return False
+        else:
+            return True

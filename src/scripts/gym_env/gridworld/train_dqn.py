@@ -18,7 +18,7 @@ from torch.utils.tensorboard import SummaryWriter
 import src.gymnasium_env
 
 config_path = "config/config.yaml"
-drive_type = "base_drive"  # ou "elliptic_drive"
+drive_type = "elliptic_drive"  # ou "elliptic_drive"
 
 # Criar um diretório único para logs desta execução
 current_time = datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -125,28 +125,27 @@ n_observations = len(processed_state)
 try:
     # Acessar o atributo drive diretamente no ambiente base
     state_names = base_env.drive.get_internal_states_names()
-    print(f"Nomes dos estados internos: {state_names}")
+    print(f"Name of internal states: {state_names}")
 except AttributeError:
-    print("AVISO: Não foi possível obter nomes dos estados internos, usando nomes genéricos")
     state_names = [f"state_{i}" for i in range(len(internal_states))]
 
 num_internal_states = len(internal_states)
-print(f"Número de estados internos: {num_internal_states}")
-print(f"Valores iniciais dos estados internos: {internal_states}")
+print(f"Number of internal states: {num_internal_states}")
+print(f"Internal states of initial values: {internal_states}")
 
 # Obter valor do drive
 try:
     current_drive = base_env.drive.get_current_drive()
-    print(f"Valor inicial do drive: {current_drive:.4f}")
+    print(f"Value of initial drive: {current_drive:.4f}")
 except AttributeError:
-    print("AVISO: Não foi possível obter o valor do drive")
+    print("Warning: It was not possible to get the current drive value")
     current_drive = None
 
 # Registrar informações no TensorBoard
-writer.add_text('Environment/Action Space', f'Número de ações: {n_actions}')
-writer.add_text('Environment/Observation Space', f'Dimensões de observação: {n_observations}')
-writer.add_text('Environment/Internal States', f'Número de estados internos: {num_internal_states}')
-writer.add_text('Environment/State Names', f'Nomes dos estados: {", ".join(state_names)}')
+writer.add_text('Environment/Action Space', f'Number of actions: {n_actions}')
+writer.add_text('Environment/Observation Space', f'Observation dimensions: {n_observations}')
+writer.add_text('Environment/Internal States', f'Number of internal states: {num_internal_states}')
+writer.add_text('Environment/State Names', f'States names: {", ".join(state_names)}')
 
 policy_net = DQN(n_observations, n_actions).to(device)
 target_net = DQN(n_observations, n_actions).to(device)
@@ -190,12 +189,12 @@ def plot_durations(show_result=False):
     plt.figure(1)
     durations_t = torch.tensor(episode_durations, dtype=torch.float)
     if show_result:
-        plt.title('Resultado')
+        plt.title('Result')
     else:
         plt.clf()
-        plt.title('Treinando...')
-    plt.xlabel('Episódio')
-    plt.ylabel('Duração')
+        plt.title('Training...')
+    plt.xlabel('Episode')
+    plt.ylabel('Duration')
     plt.plot(durations_t.numpy())
     # Calcular médias de 100 episódios e plotá-las também
     if len(durations_t) >= 100:
@@ -380,11 +379,11 @@ for i_episode in range(num_episodes):
             plot_durations()
             
             # Imprimir progresso
-            print(f"Episódio {i_episode}/{num_episodes}, Duração: {t+1}, Recompensa: {episode_reward:.2f}")
+            print(f"Episode {i_episode}/{num_episodes}, Duration: {t+1}, Reward: {episode_reward:.2f}")
             
             # Mostrar valores dos estados internos e drive no final do episódio
             if new_drive is not None:
-                print(f"  Drive final: {new_drive:.4f}")
+                print(f"  Final Drive: {new_drive:.4f}")
             
             for i, state_name in enumerate(state_names):
                 if i < len(new_internal_states):
@@ -407,4 +406,4 @@ torch.save({
     'target_net': target_net.state_dict(),
     'optimizer': optimizer.state_dict(),
 }, model_save_path)
-print(f"Modelo salvo em {model_save_path}")
+print(f"Model saved in {model_save_path}")

@@ -8,7 +8,19 @@ register(
 
 register(
     id="LimitedResources-v0",
-    entry_point="src.gymnasium_env.envs:LimitedResourcesEnv",
+    entry_point="src.gymnasium_env.envs:LimitedResources1D",
+    max_episode_steps=3000
+)
+
+register(
+    id="LimitedResources2D-v0",
+    entry_point="src.gymnasium_env.envs:LimitedResources2DEnv",
+    max_episode_steps=3000
+)
+
+register(
+    id="NormarlHomeostatic-v0",
+    entry_point="src.gymnasium_env.envs:NormarlHomeostaticEnv",
     max_episode_steps=3000
 )
 
