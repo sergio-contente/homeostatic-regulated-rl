@@ -12,14 +12,14 @@ from datetime import datetime
 import src.envs  # Import your custom environment
 
 # Path to the saved model
-model_path = "runs/DQN_GridWorld_base_drive_20250514-004659/dqn_model.pth"
+model_path = "runs/DQN_GridWorld_base_drive_20250518-165207/dqn_model.pth"
 
 # Environment settings
-config_path = "config/config.yaml"
-drive_type = "base_drive"
+config_path = "config/test_config.yaml"
+drive_type = "base_drive"  # Change to "drive" if using the drive class
 
 # Create environment with human rendering
-env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type, render_mode="human")
+env = gym.make("GridWorld-v0", config_path=config_path, drive_type=drive_type, render_mode="human", size=10)
 
 # Get the base environment
 def get_unwrapped_env(env):
