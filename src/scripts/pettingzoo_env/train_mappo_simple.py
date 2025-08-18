@@ -28,45 +28,6 @@ from dataclasses import dataclass
 from src.envs.multiagent import create_env
 from pettingzoo.utils.conversions import aec_to_parallel
 
-#3_agents stock 1
-    #0.8
-    #0.7
-    #0.6
-    #0.5
-    #0.4
-    #0.3
-    #0.2
-    #0.1
-
-#10_agents stock 1
-    #0.8
-    #0.7
-    #0.6
-    #0.5
-    #0.4
-    #0.3
-    #0.2
-    #0.1
-# #10_agents stock 2.5
-    #0.8
-    #0.7
-    #0.6
-    #0.5
-    #0.4
-    #0.3
-    #0.2
-    #0.1
-
-#10_agents stock 5
-    #0.8
-    #0.7
-    #0.6
-    #0.5
-    #0.4
-    #0.3
-    #0.2
-    #0.1
-
 # Add some cost when the resource stock is 0 or agents die
 # cost dynamically updated = e-(excess)
 
@@ -77,13 +38,20 @@ from pettingzoo.utils.conversions import aec_to_parallel
 
 # do not change the amount of resources, instead change the amount of consomption/intake 
 
+# exp1 : regen 0.03, beta 1, stock 2
+# exp2 : regen 0.03, beta 0.8, stock 2
+# exp3 : regen 0.03, beta 0.6, stock 2
+# exp3 : regen 0.03, beta 0.4, stock 2
+# exp3 : regen 0.03, beta 0.6, stock 2
+# exp3 : regen 0.03, beta 0.0, stock 2
+
 @dataclass
 class SimpleArgs:
     # Environment
     config_path: str = "config/config.yaml"
     drive_type: str = "base_drive"
     learning_rate_social: float = 0.1
-    beta: float = 0.1
+    beta: float = 0.8
     number_resources: int = 1
     n_agents: int = 10
     env_size: int = 1
@@ -531,23 +499,20 @@ def _print_detailed_info(env, iteration, avg_reward):
 
 
 def train_mappo_simple(args):
-    """Simplified MAPPO training."""
-    
-    print(f"🚀 Starting Simple MAPPO Training")
-    print(f"Device: {args.device}")
-    print(f"Agents: {args.n_agents}")
-    print(f"Initial Resources: {args.initial_resource_stock}")
+    """Simplified MAPPO training (ordem corrigida para logging inicial)."""
+
+    print("🚀 Starting Simple MAPPO Training")
+    print(f"Device: {args.device} | Agents: {args.n_agents} | Initial Resources: {args.initial_resource_stock}")
     print(f"Log Directory: {args.log_dir}")
-    
-    # Set seeds
+
+    # Seeds
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    
     device = torch.device(args.device)
-    
-    # Create environment
-    env = create_env(
+
+    # ====== ENV ======
+    base_env = create_env(
         config_path=args.config_path,
         drive_type=args.drive_type,
         learning_rate=args.learning_rate_social,
@@ -557,357 +522,192 @@ def train_mappo_simple(args):
         size=args.env_size,
         max_steps=args.max_steps,
         seed=args.seed,
-        initial_resource_stock=args.initial_resource_stock
+        initial_resource_stock=args.initial_resource_stock,
     )
-    
-    # Convert to parallel for easier handling
-    env = aec_to_parallel(env)
-    
-    # Get observation dimensions
-    sample_obs_dict, _ = env.reset()  # env.reset() returns (observations, infos)
-    
-    if not sample_obs_dict:
-        raise ValueError("Environment returned empty observations. Check environment setup.")
-    
-    if not env.agents:
-        raise ValueError("No agents found in environment.")
-    
-    sample_obs = next(iter(sample_obs_dict.values()))
-    obs_processor = ObservationProcessor(sample_obs)
-    
-    print(f"Observation dimension: {obs_processor.obs_dim}")
-    print(f"Sample observation keys: {list(sample_obs.keys()) if isinstance(sample_obs, dict) else 'Not a dict'}")
-    
-    # Get action dimension
-    action_dim = env.action_space(env.agents[0]).n
-    print(f"Action dimension: {action_dim}")
-    print(f"Number of agents: {len(env.agents)}")
-    
-    # Create agent
-    agent = SimpleAgent(obs_processor.obs_dim, action_dim).to(device)
-    optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate)
-    
-    # Training setup
+    env = aec_to_parallel(base_env)
+
+    # ====== LOGGING (primeiro!) ======
     run_name = f"simple_mappo_{int(time.time())}"
     os.makedirs(args.log_dir, exist_ok=True)
     writer = SummaryWriter(f"{args.log_dir}/{run_name}")
-    
-    print(f"📊 Logs salvos em: {args.log_dir}/{run_name}")
-    print(f"📊 Para ver TensorBoard: tensorboard --logdir {args.log_dir}")
-    print(f"\n📈 Métricas disponíveis no TensorBoard:")
-    print(f"   • train/* - Métricas de treinamento (loss, entropy, reward)")
-    print(f"   • agents/* - Estados internos, drives, normas sociais, consumo (médias)")
-    print(f"   • individual_agents/agent_X/* - Métricas individuais por agente:")
-    print(f"     - internal_state, drive, social_norm, intake, position")
-    print(f"     - homeostatic_balance, urgency")
-    print(f"   • distributions/* - Histogramas das distribuições de estados")
-    print(f"   • resources/* - Stock de recursos, percentual, taxa de depleção")
-    print(f"   • population/* - Número de agentes vivos")
-    print(f"   • cooperation/* - Índices de cooperação e sustentabilidade")
-    print(f"   • rewards/* - Breakdown de recompensa homeostática vs custo social")
-    
     global_step = 0
+
+    print(f"📊 Logs em: {args.log_dir}/{run_name}")
+    print(f"➡️  tensorboard --logdir {args.log_dir}")
+
+    # ====== RESET + LOG INICIAL ======
+    sample_obs_dict, _ = env.reset()  # (observations, infos)
+
+    # baseline para depletion_rate
+    try:
+        if hasattr(env, "unwrapped") and hasattr(env.unwrapped, "resource_stock"):
+            env.unwrapped._last_resource_stock = float(env.unwrapped.resource_stock[0])
+    except Exception:
+        pass
+
+    # log do estado inicial (estoque começa no valor real no TB)
+    _log_detailed_metrics(env, writer, global_step=global_step, args=args)
+
+    # ====== CHECAGENS ======
+    if not sample_obs_dict:
+        raise ValueError("Environment returned empty observations. Check environment setup.")
+    if not env.agents:
+        raise ValueError("No agents found in environment.")
+
+    sample_obs = next(iter(sample_obs_dict.values()))
+    obs_processor = ObservationProcessor(sample_obs)
+
+    print(f"Observation dim: {obs_processor.obs_dim}")
+    if isinstance(sample_obs, dict):
+        print(f"Observation keys: {list(sample_obs.keys())}")
+
+    action_dim = env.action_space(env.agents[0]).n
+    print(f"Action dim: {action_dim} | Active agents: {len(env.agents)}")
+
+    # ====== AGENTE ======
+    agent = SimpleAgent(obs_processor.obs_dim, action_dim).to(device)
+    optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate)
+
+    # ====== TREINAMENTO ======
     num_iterations = args.total_timesteps // args.num_steps
-    
-    print(f"Training for {num_iterations} iterations...")
-    print(f"Expected data per iteration: ~{args.num_steps * args.n_agents} points")
-    
+    print(f"Training for {num_iterations} iterations (~{args.num_steps * args.n_agents} samples/iter)")
+
     for iteration in range(num_iterations):
-        iteration_start_time = time.time()
+        it_start = time.time()
         print(f"\n--- Iteration {iteration + 1}/{num_iterations} ---")
-        
-        # Collect rollout
-        print("🎮 Starting rollout collection...")
+
+        # Coleta
         observations, actions, log_probs, rewards, values = collect_rollout(
             env, agent, obs_processor, args, device
         )
-        print("✅ Rollout collection completed")
-        
         if not observations:
-            print("Warning: No observations collected, resetting environment")
-            _, _ = env.reset()  # Reset for cleanup, discard return values
+            print("⚠️ No observations collected; resetting env and skipping.")
+            env.reset()
             continue
-        
-        # Skip if no observations collected
-        if not observations:
-            print("Warning: No observations collected")
-            continue
-        
-        print("📊 Starting data preparation...")
-        
-        # Prepare training data - ensure all lists have same length
-        all_obs = []
-        all_actions = []
-        all_log_probs = []
-        all_rewards = []
-        all_values = []
-        
-        # Collect data ensuring consistency across all lists
-        homeostatic_rewards = []
-        social_costs = []
-        
+
+        # Preparação dos dados
+        all_obs, all_actions, all_log_probs, all_rewards, all_values = [], [], [], [], []
+        homeo_rewards, social_costs = [], []
+
         for step_obs, step_actions, step_log_probs, step_rewards, step_values in zip(
             observations, actions, log_probs, rewards, values
         ):
-            for agent_id in step_obs:
-                if (agent_id in step_actions and 
-                    agent_id in step_log_probs and 
-                    agent_id in step_rewards and 
-                    agent_id in step_values):
-                    
-                    all_obs.append(step_obs[agent_id])
-                    all_actions.append(step_actions[agent_id])
-                    all_log_probs.append(step_log_probs[agent_id])
-                    all_rewards.append(step_rewards[agent_id])
-                    all_values.append(step_values[agent_id])
-                    
-                    # Try to get detailed reward breakdown if available
-                    # Note: This is simplified - in a full implementation you'd separate these during reward calculation
-                    total_reward = step_rewards[agent_id]
-                    homeostatic_rewards.append(total_reward)  # Estimated homeostatic component
-                    social_costs.append(abs(total_reward))    # Estimated social cost component
-        
-        print(f"📊 Data collected: {len(all_obs)} data points")
-        
-        if len(all_obs) == 0:
-            print("Warning: No training data available")
+            for aid in step_obs:
+                if (aid in step_actions and aid in step_log_probs
+                        and aid in step_rewards and aid in step_values):
+                    all_obs.append(step_obs[aid])
+                    all_actions.append(step_actions[aid])
+                    all_log_probs.append(step_log_probs[aid])
+                    all_rewards.append(step_rewards[aid])
+                    all_values.append(step_values[aid])
+
+                    r = step_rewards[aid]
+                    homeo_rewards.append(r)
+                    social_costs.append(abs(r))
+
+        npts = len(all_obs)
+        print(f"📊 Data points: {npts}")
+        if npts < 32:
+            print("⚠️ Few points (<32). Likely early termination. Skipping updates.")
             continue
-            
-        # Check for minimum data requirement
-        min_data_points = 32  # Minimum for stable training
-        if len(all_obs) < min_data_points:
-            print(f"⚠️ Insufficient data for training: {len(all_obs)} < {min_data_points} points")
-            print(f"   Episode ended too early (resources depleted). Skipping training...")
-            continue
-            
-        print("🔄 Computing advantages...")
-        
-        # Compute advantages and returns for the exact same data
+
+        # Vantagens e retornos (simples)
         advantages = []
         returns = []
-        for i in range(len(all_rewards)):
-            reward = all_rewards[i]
-            value = all_values[i]
-            advantage = reward - value  # Simple advantage
-            return_val = reward  # Use actual reward as return
-            advantages.append(advantage)
-            returns.append(return_val)
-        
-        # Verify all lists have same length
-        data_lengths = [len(all_obs), len(all_actions), len(all_log_probs), len(advantages), len(returns)]
-        if len(set(data_lengths)) > 1:
-            print(f"⚠️  Data length mismatch: {data_lengths}")
-            print("Skipping this iteration...")
-            continue
-        
-        print("🔄 Converting to tensors...")
-        
-        # Convert to tensors
-        obs_tensor = torch.FloatTensor(np.array(all_obs)).to(device)
-        actions_tensor = torch.LongTensor(all_actions).to(device)
-        old_log_probs = torch.FloatTensor(all_log_probs).to(device)
-        advantages_tensor = torch.FloatTensor(advantages).to(device)
-        returns_tensor = torch.FloatTensor(returns).to(device)
-        
-        print("🔄 Starting policy updates...")
-        
-        # Normalize advantages
+        for r, v in zip(all_rewards, all_values):
+            advantages.append(r - v)
+            returns.append(r)
+        # Tensores
+        obs_tensor = torch.as_tensor(np.array(all_obs), dtype=torch.float32, device=device)
+        actions_tensor = torch.as_tensor(all_actions, dtype=torch.long, device=device)
+        old_log_probs = torch.as_tensor(all_log_probs, dtype=torch.float32, device=device)
+        advantages_tensor = torch.as_tensor(advantages, dtype=torch.float32, device=device)
+        returns_tensor = torch.as_tensor(returns, dtype=torch.float32, device=device)
+
         if advantages_tensor.std() > 1e-8:
             advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (advantages_tensor.std() + 1e-8)
-        else:
-            print("⚠️  Warning: Zero advantage variance, skipping normalization")
-        
-        # Check tensor health before policy updates
-        print("🔍 Checking tensor health...")
-        print(f"   obs_tensor: shape={obs_tensor.shape}, has_nan={torch.isnan(obs_tensor).any()}")
-        print(f"   advantages: shape={advantages_tensor.shape}, has_nan={torch.isnan(advantages_tensor).any()}")
-        print(f"   old_log_probs: shape={old_log_probs.shape}, has_nan={torch.isnan(old_log_probs).any()}")
-        
-        if torch.isnan(obs_tensor).any() or torch.isnan(advantages_tensor).any() or torch.isnan(old_log_probs).any():
-            print("❌ NaN detected in input tensors! Skipping policy updates...")
-            continue
-        
-        # Update policy with timeout protection
-        print(f"🔄 Starting {args.update_epochs} policy update epochs...")
-        update_start_time = time.time()
-        
+
+        # Atualizações PPO
         for epoch in range(args.update_epochs):
-            epoch_start_time = time.time()
-            print(f"  🔄 Policy update epoch {epoch + 1}/{args.update_epochs}")
-            
-            # Timeout check (30 seconds per epoch max)
-            if time.time() - update_start_time > 30:
-                print("⚠️ Policy update timeout! Skipping remaining epochs...")
-                break
-            
-            # Get current policy outputs
-            print("    🧠 Getting action values...")
             try:
                 _, new_log_probs, entropy, values_pred = agent.get_action_and_value(obs_tensor, actions_tensor)
-                
-                # Check for numerical issues
-                if torch.isnan(new_log_probs).any():
-                    print("⚠️ NaN detected in log_probs!")
-                    break
-                if torch.isinf(new_log_probs).any():
-                    print("⚠️ Inf detected in log_probs!")
-                    break
-                    
-                print("    ✅ Action values obtained")
             except Exception as e:
-                print(f"❌ Error getting action values: {e}")
+                print(f"❌ Error on forward pass: {e}")
                 break
-            
-            # Policy loss
-            print("    📊 Computing losses...")
+
             ratio = torch.exp(new_log_probs - old_log_probs)
             surr1 = ratio * advantages_tensor
             surr2 = torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef) * advantages_tensor
             policy_loss = -torch.min(surr1, surr2).mean()
-            
-            # Value loss
             value_loss = nn.MSELoss()(values_pred.squeeze(), returns_tensor)
-            
-            # Entropy loss
             entropy_loss = entropy.mean()
-            
-            # Total loss
             loss = policy_loss + args.vf_coef * value_loss - args.ent_coef * entropy_loss
-            print("    ✅ Losses computed")
-            
-            # Update
-            print("    🔄 Backward pass...")
-            try:
-                optimizer.zero_grad()
-                loss.backward()
-                print("    ✅ Backward completed")
-                
-                print("    🔄 Optimizer step...")
-                grad_norm = nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
-                
-                # Check gradient norm
-                if torch.isnan(grad_norm) or torch.isinf(grad_norm):
-                    print(f"⚠️ Problematic gradient norm: {grad_norm}")
-                    break
-                    
-                optimizer.step()
-                print("    ✅ Optimizer step completed")
-                
-                epoch_time = time.time() - epoch_start_time
-                print(f"    ⏱️ Epoch {epoch + 1} completed in {epoch_time:.3f}s")
-                
-            except Exception as e:
-                print(f"❌ Error during optimization: {e}")
-                break
-        
-        total_update_time = time.time() - update_start_time
-        print(f"✅ All policy updates completed in {total_update_time:.3f}s")
-        
-        # Log metrics
-        print("📊 Computing final metrics...")
-        total_reward = sum(all_rewards) if all_rewards else 0
-        avg_reward = total_reward / len(all_rewards) if all_rewards else 0
-        
-        global_step += len(all_obs)
-        
-        print("📊 Logging basic training metrics...")
-        # Basic training metrics
-        writer.add_scalar("train/policy_loss", policy_loss.item(), global_step)
-        writer.add_scalar("train/value_loss", value_loss.item(), global_step)
-        writer.add_scalar("train/entropy", entropy_loss.item(), global_step)
-        writer.add_scalar("train/total_loss", loss.item(), global_step)
-        writer.add_scalar("train/avg_reward", avg_reward, global_step)
-        writer.add_scalar("train/data_points", len(all_obs), global_step)
-        print("✅ Basic metrics logged")
-        
-        print("📊 Logging reward breakdown...")
-        # Reward breakdown metrics
-        if homeostatic_rewards:
-            writer.add_scalar("rewards/avg_homeostatic", np.mean(homeostatic_rewards), global_step)
-            writer.add_scalar("rewards/std_homeostatic", np.std(homeostatic_rewards), global_step)
+
+            optimizer.zero_grad()
+            loss.backward()
+            nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
+            optimizer.step()
+
+        # Métricas de treino
+        total_reward = sum(all_rewards) if all_rewards else 0.0
+        avg_reward = total_reward / len(all_rewards) if all_rewards else 0.0
+        global_step += npts
+
+        writer.add_scalar("train/policy_loss", float(policy_loss.item()), global_step)
+        writer.add_scalar("train/value_loss", float(value_loss.item()), global_step)
+        writer.add_scalar("train/entropy", float(entropy_loss.item()), global_step)
+        writer.add_scalar("train/total_loss", float(loss.item()), global_step)
+        writer.add_scalar("train/avg_reward", float(avg_reward), global_step)
+        writer.add_scalar("train/data_points", int(npts), global_step)
+
+        if homeo_rewards:
+            writer.add_scalar("rewards/avg_homeostatic", float(np.mean(homeo_rewards)), global_step)
+            writer.add_scalar("rewards/std_homeostatic", float(np.std(homeo_rewards)), global_step)
         if social_costs:
-            writer.add_scalar("rewards/avg_social_cost", np.mean(social_costs), global_step)
-            writer.add_scalar("rewards/std_social_cost", np.std(social_costs), global_step)
-        print("✅ Reward breakdown logged")
-        
-        print("📊 Logging detailed environment metrics...")
-        # Detailed environment metrics with timeout
-        metrics_start_time = time.time()
+            writer.add_scalar("rewards/avg_social_cost", float(np.mean(social_costs)), global_step)
+            writer.add_scalar("rewards/std_social_cost", float(np.std(social_costs)), global_step)
+
+        # Log detalhado do ambiente (inclusive recursos)
         try:
-            # Set a 10-second timeout for metrics logging
-            import signal
-            
-            def timeout_handler(signum, frame):
-                raise TimeoutError("Metrics logging timeout")
-            
-            signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(10)  # 10-second timeout
-            
             _log_detailed_metrics(env, writer, global_step, args)
-            
-            signal.alarm(0)  # Cancel the alarm
-            metrics_time = time.time() - metrics_start_time
-            print(f"✅ Detailed metrics logged in {metrics_time:.3f}s")
-            
-        except TimeoutError:
-            print("⚠️ Metrics logging timed out after 10 seconds, using simple logging...")
-            # Simple fallback logging
-            try:
-                writer.add_scalar("population/alive_agents", len(env.possible_agents), global_step)
-                print("✅ Simple metrics logged as fallback")
-            except:
-                print("⚠️ Even simple metrics failed, skipping...")
-                
         except Exception as e:
-            print(f"⚠️ Warning: Could not log detailed metrics: {e}")
-            print(f"⚠️ Error type: {type(e).__name__}")
-            # Continue training even if logging fails
-        
-        print("✅ Policy update completed")
-        print(f"Policy Loss: {policy_loss.item():.4f}")
-        print(f"Value Loss: {value_loss.item():.4f}")
-        print(f"Entropy: {entropy_loss.item():.4f}")
-        print(f"Avg Reward: {avg_reward:.2f}")
-        print(f"Data points collected: {len(all_obs)}")
-        
-        # Print detailed environment info 
+            print(f"⚠️ Detailed metrics failed: {e}")
+
+        # Opcional: debug textual periódico
         if args.verbose_logging or (iteration + 1) % 10 == 0:
             _print_detailed_info(env, iteration + 1, avg_reward)
-        
-        # Check if we're getting reasonable data
-        if len(all_obs) < 10:
-            print("⚠️  Warning: Very few data points collected. Agents may be dying too quickly.")
-            print("Consider: increasing initial_resource_stock or increasing max_steps")
-        
-        # Save model periodically
+
+        # Save periódico
         if (iteration + 1) % 50 == 0:
             os.makedirs("models", exist_ok=True)
-            torch.save({
-                'model_state_dict': agent.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'iteration': iteration,
-                'args': args
-            }, f"models/simple_mappo_iter_{iteration + 1}.pt")
-            print(f"Model saved at iteration {iteration + 1}")
-        
-        iteration_time = time.time() - iteration_start_time
-        print(f"✅ Iteration {iteration + 1} completed successfully in {iteration_time:.2f}s\n")
-    
-    # Save final model
+            torch.save(
+                {
+                    "model_state_dict": agent.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "iteration": iteration,
+                    "args": args,
+                },
+                f"models/simple_mappo_iter_{iteration + 1}.pt",
+            )
+            print(f"💾 Model saved at iteration {iteration + 1}")
+
+        print(f"✅ Iter {iteration + 1} done in {time.time() - it_start:.2f}s")
+
+    # Fim do treino
     os.makedirs("models", exist_ok=True)
     final_model_path = f"models/simple_mappo_final_{run_name}.pt"
-    torch.save({
-        'model_state_dict': agent.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'iteration': num_iterations,
-        'args': args
-    }, final_model_path)
-    
-    print(f"\n✅ Training completed!")
-    print(f"📁 Final model saved: {final_model_path}")
-    print(f"📊 Logs saved in: {args.log_dir}")
-    print(f"📈 View logs with: tensorboard --logdir {args.log_dir}")
-    
+    torch.save(
+        {
+            "model_state_dict": agent.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "iteration": num_iterations,
+            "args": args,
+        },
+        final_model_path,
+    )
+    print(f"\n✅ Training completed! Final model: {final_model_path}")
+    print(f"📈 View logs: tensorboard --logdir {args.log_dir}")
+
     env.close()
     writer.close()
 
@@ -916,7 +716,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", type=str, default="config/config.yaml")
     parser.add_argument("--n_agents", type=int, default=10)
-    parser.add_argument("--initial_resource_stock", type=float, default=5.0)
+    parser.add_argument("--initial_resource_stock", type=float, default=2.0)
     parser.add_argument("--total_timesteps", type=int, default=100_000)
     parser.add_argument("--learning_rate", type=float, default=3e-4)
     parser.add_argument("--seed", type=int, default=1)

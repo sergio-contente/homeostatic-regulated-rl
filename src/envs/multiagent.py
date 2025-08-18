@@ -109,6 +109,7 @@ class NormalHomeostaticEnv(AECEnv):
         self.resource_regeneration_rate = self.global_resource_manager.get_resource_stock_regeneration_array()
         
         logger.info(f"🔄 Resource regeneration rate: {self.resource_regeneration_rate}")
+        logger.info(f"💡 Initial resource stock: {self.initial_resource_stock}")
         
         # Agent identification
         self.possible_agents = [f"agent_{i}" for i in range(n_agents)]
@@ -227,6 +228,13 @@ class NormalHomeostaticEnv(AECEnv):
         self.num_moves = 0
         self.resource_stock = self.initial_resource_stock.copy()
         self.round_intakes = []
+
+        # ADD THIS DEBUG
+        print(f"🔍 RESET DEBUG:")
+        print(f"   initial_resource_stock: {self.initial_resource_stock}")
+        print(f"   resource_stock after copy: {self.resource_stock}")
+        print(f"   regeneration_rate: {self.resource_regeneration_rate}")
+        
         
         # Explicit AgentSelector reset
         self._agent_selector = AgentSelector(self.agents)
@@ -419,13 +427,20 @@ class NormalHomeostaticEnv(AECEnv):
         
         logger.debug(f"👤 Next agent: {self.agent_selection}")
 
-    def _compute_resource_scarcity(self) -> np.ndarray:
-        """Compute resource scarcity factors for social cost calculation."""
-        a = 2.0  # Base social cost
-        b = 0.8  # Resource scarcity multiplier
-        #1000 initial resource, a = 10 and b = 0.01
-        # like a relu function
-        scarcity = np.maximum(0, a - b * self.resource_stock) # add the inverse exponencial function here
+    def _compute_resource_scarcity(self, agent_drive=None) -> np.ndarray:
+        """
+        Compute resource scarcity factors for social cost calculation.
+        Now uses an inverted exponential to reduce social cost when agent's drive (fome) is alta.
+        """
+        a = 2.0
+        b = 0.1
+        scarcity = np.maximum(0, a - b * self.resource_stock)
+        if agent_drive is not None:
+            # Quanto maior o drive (fome), menor o custo social percebido
+            # Exemplo: fator = exp(-k * drive), k controla a rapidez da queda
+            k = 2.0
+            urgency_factor = np.exp(-k * agent_drive)
+            scarcity = scarcity * urgency_factor
         return scarcity
 
     def _update_social_norms_with_round_data(self):
@@ -453,6 +468,12 @@ class NormalHomeostaticEnv(AECEnv):
         - δ = regeneration rate (e.g., 0.02 = 2%)  
         - Σ Qi_t = total consumption by all agents this round
         """
+        print(f"🔍 REGENERATION DEBUG:")
+        print(f"   num_moves: {self.num_moves}")
+        print(f"   round_intakes length: {len(self.round_intakes)}")
+        print(f"   round_intakes: {self.round_intakes}")
+        print(f"   resource_stock BEFORE: {self.resource_stock}")
+        
         # Calculate total consumption this round: Σ Qi_t
         total_consumption = np.sum([np.sum(intake) for intake in self.round_intakes])
         
