@@ -45,7 +45,7 @@ class SimpleArgs:
     config_path: str = "config/config.yaml"
     drive_type: str = "base_drive"
     learning_rate_social: float = 0.1
-    beta: float = 0.2
+    beta: float = 0.
     number_resources: int = 1
     n_agents: int = 10
     env_size: int = 1

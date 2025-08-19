@@ -38,20 +38,14 @@ from pettingzoo.utils.conversions import aec_to_parallel
 
 # do not change the amount of resources, instead change the amount of consomption/intake 
 
-# exp1 : regen 0.03, beta 1, stock 2
-# exp2 : regen 0.03, beta 0.8, stock 2
-# exp3 : regen 0.03, beta 0.6, stock 2
-# exp3 : regen 0.03, beta 0.4, stock 2
-# exp3 : regen 0.03, beta 0.6, stock 2
-# exp3 : regen 0.03, beta 0.0, stock 2
-
+ 
 @dataclass
 class SimpleArgs:
     # Environment
     config_path: str = "config/config.yaml"
     drive_type: str = "base_drive"
     learning_rate_social: float = 0.1
-    beta: float = 0.8
+    beta: float = 0.0
     number_resources: int = 1
     n_agents: int = 10
     env_size: int = 1
@@ -74,7 +68,7 @@ class SimpleArgs:
     # Other
     seed: int = 1
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
-    log_dir: str = "mappo_logs"  # Custom log directory
+    log_dir: str = "ippo_logs"  # Custom log directory
     verbose_logging: bool = False  # Show detailed info every iteration
     track_individual_agents: bool = True  # Track individual agent metrics in TensorBoard
     max_agents_to_track: int = 10  # Maximum number of agents to track individually
@@ -527,7 +521,7 @@ def train_mappo_simple(args):
     env = aec_to_parallel(base_env)
 
     # ====== LOGGING (primeiro!) ======
-    run_name = f"simple_mappo_{int(time.time())}"
+    run_name = f"simple_ippo_{int(time.time())}"
     os.makedirs(args.log_dir, exist_ok=True)
     writer = SummaryWriter(f"{args.log_dir}/{run_name}")
     global_step = 0

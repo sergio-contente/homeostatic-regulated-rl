@@ -430,14 +430,12 @@ class NormalHomeostaticEnv(AECEnv):
     def _compute_resource_scarcity(self, agent_drive=None) -> np.ndarray:
         """
         Compute resource scarcity factors for social cost calculation.
-        Now uses an inverted exponential to reduce social cost when agent's drive (fome) is alta.
+        Now uses an inverted exponential to reduce social cost when agent's drive (fome) is high
         """
         a = 2.0
         b = 0.1
         scarcity = np.maximum(0, a - b * self.resource_stock)
         if agent_drive is not None:
-            # Quanto maior o drive (fome), menor o custo social percebido
-            # Exemplo: fator = exp(-k * drive), k controla a rapidez da queda
             k = 2.0
             urgency_factor = np.exp(-k * agent_drive)
             scarcity = scarcity * urgency_factor
