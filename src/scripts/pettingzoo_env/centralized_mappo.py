@@ -35,6 +35,8 @@ from pettingzoo.utils.conversions import aec_to_parallel
 # exp3 : regen 0.03, beta 0.0, stock 2
 
 
+# gamma 0.8
+
 
 # =======================================================
 # Hyperparameters / Args
@@ -45,7 +47,7 @@ class SimpleArgs:
     config_path: str = "config/config.yaml"
     drive_type: str = "base_drive"
     learning_rate_social: float = 0.1
-    beta: float = 0.
+    beta: float = 2.0
     number_resources: int = 1
     n_agents: int = 10
     env_size: int = 1
@@ -56,7 +58,7 @@ class SimpleArgs:
     total_timesteps: int = 100_000
     learning_rate: float = 3e-4
     num_steps: int = 200            # ~20 "rounds" * 10 agentes
-    gamma: float = 0.99
+    gamma: float = 0.8
     gae_lambda: float = 0.95
     update_epochs: int = 4
     clip_coef: float = 0.2
