@@ -445,6 +445,34 @@ def train_mappo_central(args: SimpleArgs):
 
     # ----- Reset inicial -> dimensões e ordem
     sample_obs_dict, _ = env.reset()
+    # --- sanity check da observação ---
+    agent0 = env.agents[0]
+    sample_obs = sample_obs_dict[agent0]
+    print("[sanity] obs shape =", np.array(sample_obs).shape)
+
+    # se number_resources = d, esperamos 1 + d (internos) + d (norma)
+    d = getattr(env.unwrapped, "dimension_internal_states", None)
+    if d is not None:
+        print("[sanity] expected dim =", 1 + d + d)
+
+    # fatiar: [pos | internos | norma]
+    if d is not None:
+        pos = sample_obs[0]
+        ints = sample_obs[1:1+d]
+        norm = sample_obs[1+d:1+2*d]
+        print("[sanity] pos =", pos,
+            "| internal_states[min,max] =", float(np.min(ints)), float(np.max(ints)),
+            "| social_norm[min,max] =", float(np.min(norm)), float(np.max(norm)))
+        
+    try:
+        import inspect
+        from src.envs.multiagent import NormalHomeostaticEnv
+        print("[sanity] env defined at:", inspect.getsourcefile(NormalHomeostaticEnv))
+        print("[sanity] env metadata name:", getattr(env.unwrapped, "metadata", {}).get("name", "?"))
+    except Exception as e:
+        print("[sanity] couldn't inspect env:", e)
+
+
     assert len(env.agents) > 0, "No agents found."
     agent_order = list(env.possible_agents) if hasattr(env, "possible_agents") else list(env.agents)
 
@@ -626,7 +654,7 @@ def main():
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--log_dir", type=str, default="mappo_logs")
     p.add_argument("--num_steps", type=int, default=200)
-    p.add_argument("--gamma", type=float, default=0.99)
+    #p.add_argument("--gamma", type=float, default=0.99)
     p.add_argument("--gae_lambda", type=float, default=0.95)
     p.add_argument("--clip_coef", type=float, default=0.2)
     p.add_argument("--update_epochs", type=int, default=4)
@@ -645,7 +673,7 @@ def main():
         seed=args_cli.seed,
         log_dir=args_cli.log_dir,
         num_steps=args_cli.num_steps,
-        gamma=args_cli.gamma,
+        #gamma=args_cli.gamma,
         gae_lambda=args_cli.gae_lambda,
         clip_coef=args_cli.clip_coef,
         update_epochs=args_cli.update_epochs,
