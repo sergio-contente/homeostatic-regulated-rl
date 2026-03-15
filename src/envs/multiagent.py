@@ -8,7 +8,7 @@ from pettingzoo import AECEnv
 import numpy as np
 from gymnasium.spaces import Discrete, Box, Dict as GymDict
 from gymnasium.utils import seeding
-from pettingzoo.utils import AgentSelector, wrappers
+from pettingzoo.utils import agent_selector as AgentSelector, wrappers
 
 from src.utils.resource_manager import GlobalResourceManager
 from src.envs.agents.homeostatic_agent import HomeostaticAgent
@@ -347,7 +347,7 @@ class NormalHomeostaticEnv(AECEnv):
     def _calculate_reward(self, agent: HomeostaticAgent, states_before_decay: np.ndarray, last_intake: np.ndarray) -> float:
         """
         Calculate combined homeostatic and social reward.
-        
+
         Args:
             agent: The agent whose reward we're calculating
             states_before_decay: Internal states BEFORE any modifications (decay or intake)
@@ -359,18 +359,22 @@ class NormalHomeostaticEnv(AECEnv):
         new_drive = agent.drive.compute_drive(agent.internal_states)  # Final states (after decay +/- intake)
         homeostatic_reward = agent.drive.compute_reward(old_drive, new_drive)
         agent.drive.update_drive(new_drive)
-        
+
+        # Starvation penalty: penalize agents for having high drive (far from optimal)
+        # This prevents the trivial "never eat" strategy
+        starvation_penalty = new_drive ** 2
+
         # Social cost (unchanged)
         resource_scarcity = self._compute_resource_scarcity()
         social_cost = agent.compute_social_cost(last_intake, resource_scarcity)
-        
+
         # Combined reward
-        total_reward = (homeostatic_reward - social_cost) * 100.0
-        
+        total_reward = (homeostatic_reward - social_cost - starvation_penalty) * 100.0
+
         logger.debug(f"🏥 {agent.agent_id}: states {states_before_decay} → {agent.internal_states}")
         logger.debug(f"   drive {old_drive:.3f} → {new_drive:.3f}, homeostatic={homeostatic_reward:.3f}")
-        logger.debug(f"   social_cost={social_cost:.3f}, total={total_reward:.3f}")
-        
+        logger.debug(f"   starvation_penalty={starvation_penalty:.3f}, social_cost={social_cost:.3f}, total={total_reward:.3f}")
+
         return total_reward
 
     def _complete_round(self):
@@ -592,95 +596,3 @@ def create_env(**kwargs):
 def create_parallel_env(**kwargs):
     """Convenience function to create parallel environment."""
     return parallel_env(**kwargs)
-
-
-if __name__ == "__main__":
-    print("🧪 Testing Improved Multi-Agent Environment")
-    print("=" * 60)
-    
-    # Test with logging and custom resource stock
-    env_test = create_env(
-        config_path="config/config.yaml",
-        drive_type="base_drive",
-        learning_rate=0.1,
-        beta=0.5,
-        number_resources=1,
-        n_agents=3,
-        size=5,
-        max_steps=100,
-        log_level="INFO",
-        initial_resource_stock=1000.0
-    )
-    
-    print(f"✅ Environment created: {type(env_test)}")
-    print(f"   Metadata: {env_test.metadata}")
-    
-    print("\n🔄 Resetting environment...")
-    env_test.reset(seed=42)
-    
-    print(f"   Agents: {env_test.agents}")
-    print(f"   Current agent: {env_test.agent_selection}")
-    print(f"   Possible agents: {env_test.possible_agents}")
-    
-    print(f"   Action space sample: {env_test.action_space(env_test.agent_selection)}")
-    print(f"   Observation space sample: {type(env_test.observation_space(env_test.agent_selection))}")
-    
-    print("\n🚀 Running simulation...")
-    for i in range(10):
-        if not env_test.agents:
-            print("🏁 No agents left!")
-            break
-            
-        current_agent = env_test.agent_selection
-        if current_agent is None:
-            print("🏁 No current agent!")
-            break
-            
-        action = env_test.action_space(current_agent).sample()
-        env_test.step(action)
-        
-        reward = env_test.rewards.get(current_agent, 0)
-        print(f"Step {i}: {current_agent} action={action}, reward={reward:.2f}")
-        
-        # Check if episode ended
-        if all(env_test.terminations.values()) or all(env_test.truncations.values()):
-            print("🏁 Episode ended!")
-            break
-    
-    # Test reset again
-    print("\n🔄 Testing second reset...")
-    env_test.reset(seed=123)
-    print(f"   Agents after reset: {env_test.agents}")
-    print(f"   Current agent after reset: {env_test.agent_selection}")
-    
-    # Test parallel environment
-    print("\n🔄 Testing Parallel Environment...")
-    try:
-        parallel_env_test = create_parallel_env(
-            config_path="config/config.yaml",
-            drive_type="base_drive",
-            learning_rate=0.1,
-            beta=0.5,
-            number_resources=1,
-            n_agents=3,
-            size=5,
-            log_level="WARNING",  # Less verbose for parallel test
-            initial_resource_stock=500.0  # 🔧 Example with different resource scale
-        )
-        
-        print(f"✅ Parallel environment created: {type(parallel_env_test)}")
-        
-        observations = parallel_env_test.reset(seed=42)
-        print(f"   Parallel reset: {len(observations)} observations")
-        
-        # Test one parallel step
-        actions = {agent: parallel_env_test.action_space(agent).sample() for agent in parallel_env_test.agents}
-        observations, rewards, terminations, truncations, infos = parallel_env_test.step(actions)
-        
-        print(f"   Parallel step: {len(rewards)} rewards, avg: {np.mean(list(rewards.values())):.2f}")
-        print("✅ Parallel test successful!")
-        
-    except Exception as e:
-        print(f"❌ Parallel test failed: {e}")
-    
-    print("\n✅ All tests passed! Environment is production-ready! 🎉")

@@ -113,7 +113,6 @@ class HomeostaticAgent:
             reward: Homeostatic reward from drive reduction
         """
         old_drive = self.drive.compute_drive(old_states)
-        print(f" New states: {self.internal_states}")
         new_drive = self.drive.compute_drive(self.internal_states)
         reward = self.drive.compute_reward(old_drive, new_drive)
         self.drive.update_drive(new_drive)
