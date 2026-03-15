@@ -4,8 +4,8 @@ global_params: # Every drive will get one of these
     food: 
       value:  0
       loss: 0.006
-      intake: 0.1      # 🔧 Economic scaling: ~0.3 per agent as specified
-      regeneration: 0.02  # 🔧 Low regeneration: 2% for proper tragedy dynamics
+      intake: 0.1      
+      regeneration: 0.03 
     # water: 
     #   value:  0
     #   loss: 0.003

@@ -18,6 +18,22 @@ from src.envs.agents.observations import DefaultHomeostaticObservation
 # Setup logging
 logger = logging.getLogger(__name__)
 
+class RunningNormalizer:
+    """Keeps online mean/std for normalization."""
+    def __init__(self, eps=1e-8):
+        self.mean = 0.0
+        self.var = 1.0
+        self.count = eps
+
+    def update(self, x: float):
+        self.count += 1.0
+        last_mean = self.mean
+        self.mean += (x - self.mean) / self.count
+        self.var += (x - last_mean) * (x - self.mean)
+
+    def normalize(self, x: float) -> float:
+        std = np.sqrt(self.var / self.count)
+        return (x - self.mean) / (std + 1e-8)
 
 class NormalHomeostaticEnv(AECEnv):
     """
@@ -109,6 +125,7 @@ class NormalHomeostaticEnv(AECEnv):
         self.resource_regeneration_rate = self.global_resource_manager.get_resource_stock_regeneration_array()
         
         logger.info(f"🔄 Resource regeneration rate: {self.resource_regeneration_rate}")
+        logger.info(f"💡 Initial resource stock: {self.initial_resource_stock}")
         
         # Agent identification
         self.possible_agents = [f"agent_{i}" for i in range(n_agents)]
@@ -129,6 +146,10 @@ class NormalHomeostaticEnv(AECEnv):
         self.agent_selection = self._agent_selector.next()
         
         logger.info(f"✅ Environment initialized with {n_agents} agents")
+
+        self.drive_normalizer = RunningNormalizer()
+        self.norm_normalizer = RunningNormalizer()
+        
 
     def _initialize_resources(self):
         """Initialize resource positions on the grid."""
@@ -227,12 +248,22 @@ class NormalHomeostaticEnv(AECEnv):
         self.num_moves = 0
         self.resource_stock = self.initial_resource_stock.copy()
         self.round_intakes = []
+
+        # ADD THIS DEBUG
+        # print(f"🔍 RESET DEBUG:")
+        # print(f"   initial_resource_stock: {self.initial_resource_stock}")
+        # print(f"   resource_stock after copy: {self.resource_stock}")
+        # print(f"   regeneration_rate: {self.resource_regeneration_rate}")
+        
         
         # Explicit AgentSelector reset
         self._agent_selector = AgentSelector(self.agents)
         self.agent_selection = self._agent_selector.next()
         
         logger.info(f"🔄 Environment reset with {len(self.agents)} agents")
+
+        self.drive_normalizer = RunningNormalizer()
+        self.norm_normalizer = RunningNormalizer()
         
         return None
 
@@ -344,33 +375,37 @@ class NormalHomeostaticEnv(AECEnv):
     
         return actual_consumption
 
-    def _calculate_reward(self, agent: HomeostaticAgent, states_before_decay: np.ndarray, last_intake: np.ndarray) -> float:
-        """
-        Calculate combined homeostatic and social reward.
-        
-        Args:
-            agent: The agent whose reward we're calculating
-            states_before_decay: Internal states BEFORE any modifications (decay or intake)
-            last_intake: Actual intake that occurred
-        """
-        # Homeostatic reward compares initial states vs final states
-        # This captures both decay effects AND intake effects
+    def _calculate_reward(self, agent, states_before_decay: np.ndarray, last_intake: np.ndarray) -> float:
+        """Calculate normalized reward (drive reduction vs social cost)."""
+        # ---- homeostatic part
         old_drive = agent.drive.compute_drive(states_before_decay)
-        new_drive = agent.drive.compute_drive(agent.internal_states)  # Final states (after decay +/- intake)
+        new_drive = agent.drive.compute_drive(agent.internal_states)
         homeostatic_reward = agent.drive.compute_reward(old_drive, new_drive)
         agent.drive.update_drive(new_drive)
-        
-        # Social cost (unchanged)
-        resource_scarcity = self._compute_resource_scarcity()
+
+        # ---- social cost
+        agent_drive = agent.get_current_drive()
+        resource_scarcity = self._compute_resource_scarcity(agent_drive)
         social_cost = agent.compute_social_cost(last_intake, resource_scarcity)
-        
-        # Combined reward
-        total_reward = (homeostatic_reward - social_cost) * 100.0
-        
-        logger.debug(f"🏥 {agent.agent_id}: states {states_before_decay} → {agent.internal_states}")
-        logger.debug(f"   drive {old_drive:.3f} → {new_drive:.3f}, homeostatic={homeostatic_reward:.3f}")
-        logger.debug(f"   social_cost={social_cost:.3f}, total={total_reward:.3f}")
-        
+
+        # ---- update normalizers
+        self.drive_normalizer.update(homeostatic_reward)
+        self.norm_normalizer.update(social_cost)
+
+        # ---- normalize before combining
+        drive_norm = self.drive_normalizer.normalize(homeostatic_reward)
+        norm_norm = self.norm_normalizer.normalize(social_cost)
+
+        total_reward = drive_norm - norm_norm
+        #total_reward *= 100  # Apply any drive-specific multiplier
+
+        logger.debug(
+            f"🏥 {agent.agent_id}: drive_raw={homeostatic_reward:.4f}, "
+            f"norm_raw={social_cost:.4f}, "
+            f"drive_norm={drive_norm:.3f}, norm_norm={norm_norm:.3f}, "
+            f"total={total_reward:.3f}"
+        )
+
         return total_reward
 
     def _complete_round(self):
@@ -419,13 +454,18 @@ class NormalHomeostaticEnv(AECEnv):
         
         logger.debug(f"👤 Next agent: {self.agent_selection}")
 
-    def _compute_resource_scarcity(self) -> np.ndarray:
-        """Compute resource scarcity factors for social cost calculation."""
-        a = 2.0  # Base social cost
-        b = 0.8  # Resource scarcity multiplier
-        #1000 initial resource, a = 10 and b = 0.01
-        # like a relu function
-        scarcity = np.maximum(0, a - b * self.resource_stock) # add the inverse exponencial function here
+    def _compute_resource_scarcity(self, agent_drive=None) -> np.ndarray:
+        """
+        Compute resource scarcity factors for social cost calculation.
+        Now uses an inverted exponential to reduce social cost when agent's drive (fome) is high
+        """
+        a = 1.0
+        b = 0.5
+        scarcity = np.maximum(0, a - b * self.resource_stock)
+        if agent_drive is not None:
+            k = 2.0
+            urgency_factor = np.exp(-k * agent_drive)
+            scarcity = scarcity * urgency_factor
         return scarcity
 
     def _update_social_norms_with_round_data(self):
@@ -453,28 +493,44 @@ class NormalHomeostaticEnv(AECEnv):
         - δ = regeneration rate (e.g., 0.02 = 2%)  
         - Σ Qi_t = total consumption by all agents this round
         """
-        # Calculate total consumption this round: Σ Qi_t
-        total_consumption = np.sum([np.sum(intake) for intake in self.round_intakes])
+        # print(f"🔍 REGENERATION DEBUG:")
+        # print(f"   num_moves: {self.num_moves}")
+        # print(f"   round_intakes length: {len(self.round_intakes)}")
+        # print(f"   round_intakes: {self.round_intakes}")
+        # print(f"   resource_stock BEFORE: {self.resource_stock}")
         
-        old_stock = self.resource_stock.copy()
-        regeneration_rates = self.resource_regeneration_rate # Use the rate from the manager
+        # # Calculate total consumption this round: Σ Qi_t
+        # total_consumption = np.sum([np.sum(intake) for intake in self.round_intakes])
         
-        # 🏛️ Apply economic formula EXACTLY: Et+1 = (1 + δ)Et - Σ Qi_t
-        new_stock = (1 + regeneration_rates) * self.resource_stock - total_consumption
+        # old_stock = self.resource_stock.copy()
+        # regeneration_rates = self.resource_regeneration_rate # Use the rate from the manager
         
-        # Apply constraints (non-negative and natural carrying capacity)
-        # Use initial stock as natural ecological carrying capacity
-        # Resources can regenerate but cannot exceed the natural sustainable level
+        # # 🏛️ Apply economic formula EXACTLY: Et+1 = (1 + δ)Et - Σ Qi_t
+        # new_stock = (1 + regeneration_rates) * self.resource_stock - total_consumption
+        
+        # # Apply constraints (non-negative and natural carrying capacity)
+        # # Use initial stock as natural ecological carrying capacity
+        # # Resources can regenerate but cannot exceed the natural sustainable level
+        # self.resource_stock = np.minimum(
+        #     np.maximum(0, new_stock), 
+        #     self.initial_resource_stock  # Natural carrying capacity
+        # )
+
+        # sum per resource across agents in the round
+        total_consumption_vec = np.sum(self.round_intakes, axis=0)  # shape: (num_resources,)
+
+        new_stock = (1 + self.resource_regeneration_rate) * self.resource_stock - total_consumption_vec
         self.resource_stock = np.minimum(
-            np.maximum(0, new_stock), 
-            self.initial_resource_stock  # Natural carrying capacity
+            np.maximum(0, new_stock),
+            self.initial_resource_stock
         )
+
         
         # Logging for verification
-        logger.info(f"🏛️ Economic formula: Et={(old_stock[0]):.3f}, "
-                    f"δ={regeneration_rates[0]:.3f}, ΣQ={total_consumption:.3f}")
-        logger.info(f"🏛️ Result: ({1 + regeneration_rates[0]:.3f})*{old_stock[0]:.3f} - {total_consumption:.3f} = {self.resource_stock[0]:.3f}")
-        logger.info(f"🏛️ Round intakes count: {len(self.round_intakes)}, intakes: {self.round_intakes}")
+        # logger.info(f"🏛️ Economic formula: Et={(old_stock[0]):.3f}, "
+        #             f"δ={regeneration_rates[0]:.3f}, ΣQ={total_consumption:.3f}")
+        # logger.info(f"🏛️ Result: ({1 + regeneration_rates[0]:.3f})*{old_stock[0]:.3f} - {total_consumption:.3f} = {self.resource_stock[0]:.3f}")
+        # logger.info(f"🏛️ Round intakes count: {len(self.round_intakes)}, intakes: {self.round_intakes}")
         
         # Mark resources as available for next round
         for resource_info in self.resources_info.values():
@@ -489,6 +545,7 @@ class NormalHomeostaticEnv(AECEnv):
             logger.warning(f"🏜️ Global termination: All resources depleted (stock: {self.resource_stock})")
             # Mark ALL agents for truncation (episode ends)
             for agent_id in self.agents[:]:
+                self.rewards[agent_id] +=  - 5.0
                 self.truncations[agent_id] = True
                 agents_to_remove.append(agent_id)
         else:
