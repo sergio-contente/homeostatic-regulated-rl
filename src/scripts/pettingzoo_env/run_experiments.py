@@ -17,7 +17,7 @@ import argparse
 import time
 
 
-def run_experiment(beta, stock, n_agents, timesteps, base_log_dir, seed):
+def run_experiment(beta, stock, n_agents, timesteps, base_log_dir, seed, learning_rate):
     """Run a single experiment with given parameters."""
     log_dir = f"{base_log_dir}/beta_{beta}_stock_{stock}"
 
@@ -29,6 +29,7 @@ def run_experiment(beta, stock, n_agents, timesteps, base_log_dir, seed):
         "--total_timesteps", str(timesteps),
         "--log_dir", log_dir,
         "--seed", str(seed),
+        "--learning_rate", str(learning_rate),
     ]
 
     print(f"\n{'='*60}")
@@ -57,7 +58,17 @@ def main():
     parser.add_argument("--timesteps", type=int, default=100_000)
     parser.add_argument("--log_dir", type=str, default="mappo_experiments")
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--learning_rate", type=float, default=3e-4)
+    parser.add_argument("--clean", action="store_true",
+                        help="Remove old logs before running")
     args = parser.parse_args()
+
+    if args.clean:
+        import shutil
+        import os
+        if os.path.exists(args.log_dir):
+            shutil.rmtree(args.log_dir)
+            print(f"Cleaned old logs at {args.log_dir}")
 
     experiments = [(b, s) for s in args.stocks for b in args.betas]
 
@@ -69,7 +80,7 @@ def main():
 
     results = []
     for beta, stock in experiments:
-        ok = run_experiment(beta, stock, args.n_agents, args.timesteps, args.log_dir, args.seed)
+        ok = run_experiment(beta, stock, args.n_agents, args.timesteps, args.log_dir, args.seed, args.learning_rate)
         results.append((beta, stock, ok))
 
     print(f"\n{'='*60}")
