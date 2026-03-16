@@ -67,7 +67,8 @@ class NormalHomeostaticEnv(AECEnv):
         max_steps: int = 1000,
         seed: Optional[int] = None,
         log_level: str = "INFO",
-        initial_resource_stock: Optional[float] = None
+        initial_resource_stock: Optional[float] = None,
+        scarcity_mode: str = "original"
     ):
         """
         Initialize the improved multi-agent homeostatic environment.
@@ -85,6 +86,11 @@ class NormalHomeostaticEnv(AECEnv):
             seed: Random seed for reproducibility
             log_level: Logging level ("DEBUG", "INFO", "WARNING", "ERROR")
             initial_resource_stock: Initial resource amount per type (default: 3.0)
+            scarcity_mode: Scarcity function for social cost calculation.
+                "original" = max{0, a - b*E} with a=1.0, b=0.5 (zero above stock=2.0)
+                "adjusted_ab" = max{0, a - b*E} with a=3.0, b=0.5 (zero above stock=6.0)
+                "soft" = exp(-E) (never fully zero, smooth decay)
+                "combined" = max{0, a - b*E} * exp(-E) with a=3.0, b=0.5
         """
         super().__init__()
         
@@ -110,6 +116,7 @@ class NormalHomeostaticEnv(AECEnv):
         self.drive_type = drive_type
         self.learning_rate = learning_rate
         self.beta = beta
+        self.scarcity_mode = scarcity_mode
         
         # Seed handling for reproducibility
         self._seed = seed
@@ -456,15 +463,29 @@ class NormalHomeostaticEnv(AECEnv):
     def _compute_resource_scarcity(self, agent_drive=None) -> np.ndarray:
         """
         Compute resource scarcity factors for social cost calculation.
-        Now uses an inverted exponential to reduce social cost when agent's drive (fome) is high
+
+        Modes:
+            original:    max{0, 1.0 - 0.5*E}          (zero when E > 2.0)
+            adjusted_ab: max{0, 3.0 - 0.5*E}          (zero when E > 6.0)
+            soft:        exp(-E)                       (smooth, never zero)
+            combined:    max{0, 3.0 - 0.5*E} * exp(-E) (both effects)
         """
-        a = 1.0
-        b = 0.5
-        scarcity = np.maximum(0, a - b * self.resource_stock)
+        E = self.resource_stock
+
+        if self.scarcity_mode == "adjusted_ab":
+            scarcity = np.maximum(0, 3.0 - 0.5 * E)
+        elif self.scarcity_mode == "soft":
+            scarcity = np.exp(-E)
+        elif self.scarcity_mode == "combined":
+            scarcity = np.maximum(0, 3.0 - 0.5 * E) * np.exp(-E)
+        else:  # original
+            scarcity = np.maximum(0, 1.0 - 0.5 * E)
+
         if agent_drive is not None:
             k = 2.0
             urgency_factor = np.exp(-k * agent_drive)
             scarcity = scarcity * urgency_factor
+
         return scarcity
 
     def _update_social_norms_with_round_data(self):

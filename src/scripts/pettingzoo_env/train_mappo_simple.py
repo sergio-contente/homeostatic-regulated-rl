@@ -34,6 +34,7 @@ class SimpleArgs:
     env_size: int = 1
     max_steps: int = 1000
     initial_resource_stock: float = 1.0
+    scarcity_mode: str = "original"
 
     # Training
     total_timesteps: int = 100_000
@@ -258,7 +259,7 @@ def _log_detailed_metrics(env, writer, global_step, args=None):
 
 def train_mappo_simple(args):
     """MAPPO training loop."""
-    print(f"MAPPO Training | agents={args.n_agents} | beta={args.beta} | stock={args.initial_resource_stock} | device={args.device}")
+    print(f"MAPPO Training | agents={args.n_agents} | beta={args.beta} | stock={args.initial_resource_stock} | scarcity={args.scarcity_mode} | device={args.device}")
 
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -276,7 +277,8 @@ def train_mappo_simple(args):
         size=args.env_size,
         max_steps=args.max_steps,
         seed=args.seed,
-        initial_resource_stock=args.initial_resource_stock
+        initial_resource_stock=args.initial_resource_stock,
+        scarcity_mode=args.scarcity_mode
     )
     env = aec_to_parallel(env)
 
@@ -426,6 +428,8 @@ def main():
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--log_dir", type=str, default="mappo_logs")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--scarcity_mode", type=str, default="original",
+                        choices=["original", "adjusted_ab", "soft", "combined"])
     parser.add_argument("--no-individual-tracking", action="store_true")
     parser.add_argument("--max-agents-tracked", type=int, default=10)
     args = parser.parse_args()
@@ -441,7 +445,8 @@ def main():
         log_dir=args.log_dir,
         verbose_logging=args.verbose,
         track_individual_agents=not args.no_individual_tracking,
-        max_agents_to_track=args.max_agents_tracked
+        max_agents_to_track=args.max_agents_tracked,
+        scarcity_mode=args.scarcity_mode
     )
     train_mappo_simple(train_args)
 
