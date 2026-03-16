@@ -36,7 +36,7 @@ def run(beta, stock):
     print(f"{'='*60}\n")
 
     start = time.time()
-    result = subprocess.run(cmd, cwd="/home/contente/homeostatic-regulated-rl")
+    result = subprocess.run(cmd, cwd=".")
     elapsed = time.time() - start
 
     status = "OK" if result.returncode == 0 else "FAILED"

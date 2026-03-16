@@ -1,0 +1,6 @@
+numpy
+pettingzoo
+torch
+tensorboard
+gymnasium
+pyyaml

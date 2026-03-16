@@ -5,7 +5,6 @@ from typing import Dict, Any, Tuple, Optional
 
 import functools
 
-
 class ActionFunction:
     """Abstract base class for action functions."""
 
